@@ -1,0 +1,7 @@
+# En test uniquement, le service detient aussi une cle PRIVEE — celle d'une paire
+# dediee aux tests (config/jwt/test/), jamais celle de production. Elle sert a
+# fabriquer les tokens des scenarios, pas a en emettre pour de vrai.
+lexik_jwt_authentication:
+    secret_key: '%env(resolve:JWT_SECRET_KEY)%'
+    public_key: '%env(resolve:JWT_PUBLIC_KEY)%'
+    pass_phrase: '%env(JWT_PASSPHRASE)%'

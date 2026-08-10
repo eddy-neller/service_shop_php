@@ -1,0 +1,6 @@
+# Service de VALIDATION uniquement : seule la cle publique est declaree.
+# La cle privee et sa passphrase ne quittent jamais le service emetteur (api/),
+# ce service est donc structurellement incapable de forger un token.
+lexik_jwt_authentication:
+    public_key: '%env(resolve:JWT_PUBLIC_KEY)%'
+    user_id_claim: sub

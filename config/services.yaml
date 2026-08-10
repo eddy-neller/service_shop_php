@@ -1,0 +1,17 @@
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+
+    App\:
+        resource: '../src/'
+        exclude:
+            - '../src/Kernel.php'
+
+when@test:
+    services:
+        # Rendu public pour que les tests fonctionnels puissent forger des tokens
+        # aux exp arbitraires (cas « token expire »).
+        test.jwt_encoder:
+            alias: lexik_jwt_authentication.encoder
+            public: true

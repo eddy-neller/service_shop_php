@@ -1,0 +1,41 @@
+###> symfony/framework-bundle ###
+/.env
+/config/secrets/prod/prod.decrypt.private.php
+/public/bundles/
+/var/
+/vendor/
+###< symfony/framework-bundle ###
+
+/makefile.conf
+/.idea
+/coverage
+.codex
+.claude
+
+# Assets and user uploads
+/assets/*
+/public/uploads/images/shop/product/*
+!public/uploads/images/shop/product/.gitkeep
+
+###> lexik/jwt-authentication-bundle ###
+# La cle publique de production est copiee localement, pas versionnee.
+/config/jwt/public.pem
+/config/jwt/private.pem
+# La paire de TEST est versionnee volontairement (voir AGENTS.md) : elle ne
+# protege rien et rend la suite reproductible.
+!/config/jwt/test/
+###< lexik/jwt-authentication-bundle ###
+
+###> phpstan/phpstan ###
+phpstan.neon
+###< phpstan/phpstan ###
+
+###> phpunit/phpunit ###
+/phpunit.xml
+/.phpunit.cache/
+###< phpunit/phpunit ###
+
+###> squizlabs/php_codesniffer ###
+/.phpcs-cache
+/phpcs.xml
+###< squizlabs/php_codesniffer ###

@@ -1,0 +1,6 @@
+framework:
+    secret: '%env(APP_SECRET)%'
+    # Le service est sans etat : ni session, ni cookie. Toute l'identite vient du JWT.
+    session: false
+    php_errors:
+        log: true

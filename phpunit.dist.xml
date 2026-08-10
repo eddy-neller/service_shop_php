@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="tests/bootstrap.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache"
+         failOnRisky="true"
+         failOnWarning="true"
+>
+    <php>
+        <ini name="display_errors" value="1"/>
+        <ini name="error_reporting" value="-1"/>
+        <server name="APP_ENV" value="test" force="true"/>
+        <server name="SHELL_VERBOSITY" value="-1"/>
+        <!-- Normalement pose par la recette Flex de framework-bundle, ecartee ici
+             au profit d'un squelette ecrit a la main. -->
+        <server name="KERNEL_CLASS" value="App\Kernel"/>
+    </php>
+
+    <!-- FrameworkBundle::boot() enregistre le ErrorHandler de Symfony, que PHPUnit 11
+         signale ensuite comme un gestionnaire d'exceptions non restaure. Cette
+         extension est l'integration prevue pour faire cohabiter les deux. -->
+    <extensions>
+        <bootstrap class="Symfony\Bridge\PhpUnit\SymfonyExtension"/>
+    </extensions>
+
+    <testsuites>
+        <testsuite name="functional">
+            <directory>tests/Functional</directory>
+        </testsuite>
+    </testsuites>
+
+    <source>
+        <include>
+            <directory>src</directory>
+        </include>
+    </source>
+</phpunit>

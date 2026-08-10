@@ -1,0 +1,30 @@
+name: en_shop_service_shop
+
+# Aucun reseau externe, aucun depends_on vers une autre stack : ce service demarre
+# et repond seul. C'est une propriete du jalon 1, pas un oubli — il ne partage
+# aucun etat avec le service emetteur, seulement sa cle publique.
+services:
+  app:
+    container_name: en_shop_service_shop_app
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: ./docker/app/Dockerfile
+    volumes:
+      # Commenter la ligne suivante en production
+      - ./:/var/www:rw
+    extra_hosts:
+      - host.docker.internal:host-gateway
+
+  nginx:
+    container_name: en_shop_service_shop_nginx
+    restart: unless-stopped
+    depends_on:
+      - app
+    build:
+      context: .
+      dockerfile: ./docker/nginx/Dockerfile
+    volumes:
+      # Commenter la ligne suivante en production
+      - ./:/var/www:rw
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:rw
