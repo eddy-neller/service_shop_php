@@ -1,0 +1,31 @@
+doctrine_mongodb:
+    connections:
+        default:
+            server: '%env(MONGODB_URL)%'
+    default_database: '%env(MONGODB_DB)%'
+    document_managers:
+        default:
+            # `use_transactional_flush` n'est volontairement pas active globalement :
+            # MongoTransactional passe `['withTransaction' => true]` au flush qu'il pilote,
+            # ce qui rend visible, a la lecture, ou commence et finit la transaction.
+            auto_mapping: false
+            mappings:
+                Catalog:
+                    type: attribute
+                    dir: '%kernel.project_dir%/src/Infrastructure/Persistence/Mongo'
+                    prefix: 'App\Infrastructure\Persistence\Mongo'
+                    is_bundle: false
+                GedmoTranslatable:
+                    # Les traductions Gedmo sont des documents MongoDB distincts ; leur
+                    # mapping doit donc etre connu de l'ODM avant d'annoter un champ
+                    # applicatif avec #[Gedmo\Translatable].
+                    type: attribute
+                    dir: '%kernel.project_dir%/vendor/gedmo/doctrine-extensions/src/Translatable/Document'
+                    prefix: 'Gedmo\Translatable\Document'
+                    is_bundle: false
+
+when@prod:
+    doctrine_mongodb:
+        auto_generate_proxy_classes: false
+        auto_generate_hydrator_classes: false
+        auto_generate_persistent_collection_classes: false

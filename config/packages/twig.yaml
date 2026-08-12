@@ -1,0 +1,9 @@
+twig:
+    file_name_pattern: '*.twig'
+    globals:
+        app_title: '%env(resolve:APP_TITLE)%'
+        app_version: '%env(resolve:APP_VERSION)%'
+
+when@test:
+    twig:
+        strict_variables: true

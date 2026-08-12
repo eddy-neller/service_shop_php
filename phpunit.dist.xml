@@ -4,6 +4,8 @@
          bootstrap="tests/bootstrap.php"
          colors="true"
          cacheDirectory=".phpunit.cache"
+         failOnDeprecation="true"
+         failOnNotice="true"
          failOnRisky="true"
          failOnWarning="true"
 >
@@ -17,22 +19,67 @@
         <server name="KERNEL_CLASS" value="App\Kernel"/>
     </php>
 
-    <!-- FrameworkBundle::boot() enregistre le ErrorHandler de Symfony, que PHPUnit 11
-         signale ensuite comme un gestionnaire d'exceptions non restaure. Cette
-         extension est l'integration prevue pour faire cohabiter les deux. -->
-    <extensions>
-        <bootstrap class="Symfony\Bridge\PhpUnit\SymfonyExtension"/>
-    </extensions>
-
+    <!-- Ce fichier est la reference : il doit decrire l'integralite de `tests/`.
+         Un `phpunit.xml` local (gitignore) peut le surcharger, mais rien ne doit
+         n'exister que la-bas — une suite absente d'ici ne serait jouee nulle part
+         en CI, et l'oubli passerait pour un run vert. -->
     <testsuites>
-        <testsuite name="functional">
-            <directory>tests/Functional</directory>
+        <!-- Suites a ports mockes, reprises telles quelles du monolithe. Si l'une
+             d'elles doit etre retouchee pour passer au vert, c'est que la migration
+             vers MongoDB a fuite hors d'Infrastructure/. -->
+        <testsuite name="domain.catalog">
+            <directory>tests/Domain/Catalog/Unit</directory>
+        </testsuite>
+        <testsuite name="appli.catalog">
+            <directory>tests/Application/Unit/Catalog/UseCase</directory>
+        </testsuite>
+        <testsuite name="pres.state.catalog">
+            <directory>tests/Presentation/Unit/State/Catalog</directory>
+        </testsuite>
+        <testsuite name="infra.symfony.command">
+            <directory>tests/Infrastructure/Unit/Symfony/Command</directory>
+        </testsuite>
+        <testsuite name="infra.api-platform.encoder">
+            <directory>tests/Infrastructure/Unit/ApiPlatform/Encoder</directory>
+        </testsuite>
+        <testsuite name="infra.api-platform.serializer">
+            <directory>tests/Infrastructure/Unit/ApiPlatform/Serializer</directory>
+        </testsuite>
+
+        <!-- Suites touchant un vrai MongoDB (base `service_shop_test`, cf. .env.test).
+             Ce sont les seules a attraper les regressions de mapping, d'index et de
+             transaction : elles exigent la stack `make up` et le replica set. -->
+        <testsuite name="infra.persist">
+            <directory>tests/Infrastructure/Integration/Persistence</directory>
+        </testsuite>
+        <testsuite name="api.catalog.category">
+            <file>tests/Presentation/Api/Catalog/CategoryTest.php</file>
+        </testsuite>
+        <testsuite name="api.catalog.product">
+            <file>tests/Presentation/Api/Catalog/ProductTest.php</file>
         </testsuite>
     </testsuites>
 
-    <source>
+    <source ignoreSuppressionOfDeprecations="true"
+            ignoreIndirectDeprecations="true"
+            restrictNotices="true"
+            restrictWarnings="true"
+    >
         <include>
             <directory>src</directory>
         </include>
+        <exclude>
+            <!-- Peuplement local uniquement, enregistre sous `when@dev`. -->
+            <directory>src/Infrastructure/Symfony/DataFixtures</directory>
+            <file>src/Kernel.php</file>
+        </exclude>
+
+        <!-- Sans ces declarations, une deprecation emise par l'ODM est imputee a
+             doctrine/deprecations plutot qu'a notre appelant. -->
+        <deprecationTrigger>
+            <method>Doctrine\Deprecations\Deprecation::trigger</method>
+            <method>Doctrine\Deprecations\Deprecation::delegateTriggerToBackend</method>
+            <function>trigger_deprecation</function>
+        </deprecationTrigger>
     </source>
 </phpunit>

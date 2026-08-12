@@ -1,15 +1,62 @@
 name: en_shop_service_shop
 
-# Aucun reseau externe, aucun depends_on vers une autre stack : ce service demarre
-# et repond seul. C'est une propriete du jalon 1, pas un oubli — il ne partage
-# aucun etat avec le service emetteur, seulement sa cle publique.
 services:
+  ###> doctrine/mongodb-odm-bundle ###
+  mongodb:
+    container_name: en_shop_service_shop_mongodb
+    restart: unless-stopped
+    build:
+      context: ./docker/mongodb
+      dockerfile: ./Dockerfile
+    environment:
+      - MONGO_INITDB_DATABASE=${MONGODB_DB:-app}
+      # You should definitely set a root username and password in production
+      - MONGO_INITDB_ROOT_USERNAME=${MONGODB_USERNAME:-}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGODB_PASSWORD:-}
+    # MongoDB demande 64 000 descripteurs ; Docker en accorde 1 024 par defaut.
+    # Sous cette limite, mongod ne se degrade pas : il leve `TooManyFilesOpen` en
+    # creant un eventfd, puis **segfault** et redemarre. La suite fonctionnelle le
+    # declenche de facon fiable — chaque test ouvre une connexion, purge les
+    # collections et repose les index — et les tests tombent alors avec un
+    # `ReplicaSetNoPrimary` qui ne dit rien de la vraie cause.
+    ulimits:
+      nofile:
+        soft: 64000
+        hard: 64000
+    healthcheck:
+      # Premiere passe: rs.status() leve (NotYetInitialized) et on initie.
+      # Passes suivantes: rs.status().ok vaut 1, le conteneur devient healthy.
+      test: >
+        mongosh --quiet
+        --username "$$MONGO_INITDB_ROOT_USERNAME"
+        --password "$$MONGO_INITDB_ROOT_PASSWORD"
+        --authenticationDatabase admin
+        --eval "
+          try { rs.status().ok }
+          catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongodb:27017'}]}).ok }
+        "
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    volumes:
+      - mongodb_data:/data/db:rw
+      # You may use a bind-mounted host directory instead, so that it is harder to accidentally remove the volume and lose all your data!
+      # - ./docker/mongodb/data:/data/db:rw
+  ###< doctrine/mongodb-odm-bundle ###
+
   app:
     container_name: en_shop_service_shop_app
     restart: unless-stopped
     build:
       context: .
       dockerfile: ./docker/app/Dockerfile
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      PHP_IDE_CONFIG: serverName=${PHP_IDE_SERVER_NAME:-en-shop-service-shop}
+      XDEBUG_MODE: ${XDEBUG_MODE:-off}
     volumes:
       # Commenter la ligne suivante en production
       - ./:/var/www:rw
@@ -28,3 +75,8 @@ services:
       # Commenter la ligne suivante en production
       - ./:/var/www:rw
       - ./docker/nginx/conf.d:/etc/nginx/conf.d:rw
+
+volumes:
+###> doctrine/mongodb-odm-bundle ###
+  mongodb_data:
+###< doctrine/mongodb-odm-bundle ###

@@ -1,0 +1,35 @@
+api_platform:
+    title: '%env(APP_TITLE)%'
+    version: '%env(APP_VERSION)%'
+    show_webby: false
+
+    # API Platform active son integration ODM des qu'il voit le bundle Doctrine MongoDB.
+    # On la coupe : les ressources de ce service passent toutes par des State Providers
+    # et Processors ecrits a la main, qui dispatchent des queries. Laisser l'integration
+    # active reintroduirait un chemin de lecture parallele, adosse au store.
+    doctrine: false
+    doctrine_mongodb_odm: false
+    mapping:
+        paths:
+            - '%kernel.project_dir%/src/Presentation'
+    formats:
+        json: ['application/json']
+    docs_formats:
+        html: ['text/html']
+    error_formats:
+        json: ['application/json']
+    defaults:
+        stateless: true
+        cache_headers:
+            max_age: 0
+            shared_max_age: 0
+            vary: ['Content-Type', 'Authorization', 'Origin']
+            etag: true
+
+    # Resolution par is_a() : le 1er match dans l'ordre gagne — specifiques d'abord,
+    # puis les categories semantiques du domaine, puis le fallback.
+    exception_to_status:
+        App\Domain\SharedKernel\Exception\InvalidArgumentInterface: 422
+        App\Domain\SharedKernel\Exception\ConflictInterface: 409
+        App\Domain\SharedKernel\Exception\EntityNotFoundInterface: 404
+        App\Domain\SharedKernel\Exception\DomainException: 400

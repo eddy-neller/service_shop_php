@@ -4,3 +4,18 @@
 lexik_jwt_authentication:
     public_key: '%env(resolve:JWT_PUBLIC_KEY)%'
     user_id_claim: sub
+
+# La seule exception, et elle ne quitte pas l'environnement de test.
+#
+# La suite fonctionnelle doit pouvoir se donner un token admin, un token membre et
+# un token expire sans que le service emetteur tourne — c'est la contrepartie de
+# l'autonomie exigee ailleurs. Elle signe donc avec `config/jwt/test/private.pem`,
+# paire versionnee qui ne protege rien et n'a aucun rapport avec celle de l'emetteur.
+#
+# Ce bloc doit rester sous `when@test`. L'y sortir donnerait a dev et prod la capacite
+# d'emettre des tokens, y compris admin, et retirerait au service la propriete qui fait
+# tout l'interet de la validation asymetrique.
+when@test:
+    lexik_jwt_authentication:
+        secret_key: '%env(resolve:JWT_SECRET_KEY)%'
+        pass_phrase: '%env(JWT_PASSPHRASE)%'

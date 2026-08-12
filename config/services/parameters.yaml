@@ -1,0 +1,16 @@
+# Put parameters here that don't need to change on each machine where the app is deployed
+# https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
+parameters:
+    app.path.images: /uploads/images
+    app.enabled_locales: "%kernel.enabled_locales%"
+    app.default_locale: "%kernel.default_locale%"
+    app_title: "%env(resolve:APP_TITLE)%"
+    mailer_to: "%env(resolve:MAILER_TO)%"
+
+    ###> symfony/mailer ###
+    mailer_dsn: "%env(resolve:MAILER_DSN)%"
+    mailer_user: "%env(resolve:MAILER_USER)%"
+    mailer_password: "%env(resolve:MAILER_PASSWORD)%"
+    mailer_reply: "%env(resolve:MAILER_REPLY)%"
+    mailer_port: "%env(resolve:MAILER_PORT)%"
+    ###< symfony/mailer ###

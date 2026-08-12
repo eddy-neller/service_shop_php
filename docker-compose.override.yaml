@@ -1,5 +1,10 @@
 services:
   nginx:
     ports:
-      # Le monolithe occupe 20900-20909.
       - "${NGINX_EXPOSED_PORT:-20910}:80"
+
+###> doctrine/mongodb-odm-bundle ###
+  mongodb:
+    ports:
+      - "${MONGODB_EXPOSED_PORT:-20912}:27017"
+###< doctrine/mongodb-odm-bundle ###

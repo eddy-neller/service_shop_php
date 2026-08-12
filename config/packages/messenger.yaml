@@ -1,0 +1,18 @@
+framework:
+  messenger:
+    default_bus: command.bus
+
+    buses:
+      command.bus:
+        middleware:
+          - App\Infrastructure\Symfony\Messenger\CQRS\Middleware\CommandLoggingMiddleware
+          - App\Infrastructure\Symfony\Messenger\CQRS\Middleware\UnwrapHandlerFailedExceptionMiddleware
+      query.bus:
+        middleware:
+          - App\Infrastructure\Symfony\Messenger\CQRS\Middleware\QueryLoggingMiddleware
+          - App\Infrastructure\Symfony\Messenger\CQRS\Middleware\UnwrapHandlerFailedExceptionMiddleware
+
+# Le cache des queries (QueryCacheMiddleware) et son pendant d'invalidation
+# (CacheInvalidationMiddleware) n'arrivent qu'a l'etape B : l'invalidation est pilotee
+# par les Domain Events, qui n'existent pas encore. Un cache sans invalidation
+# renverrait des lectures perimees des la premiere ecriture.

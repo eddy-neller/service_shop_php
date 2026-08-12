@@ -1,17 +1,58 @@
-services:
-    _defaults:
-        autowire: true
-        autoconfigure: true
+# yaml-language-server: $schema=../vendor/symfony/dependency-injection/Loader/schema/services.schema.json
 
-    App\:
-        resource: '../src/'
-        exclude:
-            - '../src/Kernel.php'
+# This file is the entry point to configure your own services.
+# Files in the packages/ subdirectory configure your dependencies.
+# See also https://symfony.com/doc/current/service_container/import.html
+
+# Put parameters here that don't need to change on each machine where the app is deployed
+# https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
+parameters:
+
+# config/services.yaml
+imports:
+  - { resource: 'services/*.yaml' }
+
+services:
+  _defaults:
+    autowire: true
+    autoconfigure: true
+
+  _instanceof:
+    App\Application\Shared\CQRS\Command\CommandHandlerInterface:
+      tags:
+        - { name: 'messenger.message_handler', bus: 'command.bus', method: 'handle' }
+    App\Application\Shared\CQRS\Query\QueryHandlerInterface:
+      tags:
+        - { name: 'messenger.message_handler', bus: 'query.bus', method: 'handle' }
+
+  App\:
+    resource: '../src/'
+    exclude:
+      - '../src/Kernel.php'
+      - '../src/Infrastructure/Persistence/Mongo/**/*Document.php'
+      - '../src/Domain/'
+      - '../src/Application/Catalog/ReadModel/'
+      - '../src/Application/Catalog/UseCase/*/*/*Command.php'
+      - '../src/Application/Catalog/UseCase/*/*/*Query.php'
+      - '../src/Presentation/Catalog/ApiResource/'
+      - '../src/Presentation/Catalog/Dto/'
+      - '../src/Infrastructure/Symfony/DataFixtures/'
+
+when@dev:
+  services:
+    _defaults:
+      autowire: true
+      autoconfigure: true
+
+    # Enregistrees uniquement en dev : elles n'existent que pour peupler une base
+    # locale, et le groupe `dev` de `make fixtures` s'appuie sur ce meme decoupage.
+    App\Infrastructure\Symfony\DataFixtures\:
+      resource: '../src/Infrastructure/Symfony/DataFixtures/'
 
 when@test:
-    services:
-        # Rendu public pour que les tests fonctionnels puissent forger des tokens
-        # aux exp arbitraires (cas « token expire »).
-        test.jwt_encoder:
-            alias: lexik_jwt_authentication.encoder
-            public: true
+  services:
+    # Rendu public pour que les tests fonctionnels puissent forger des tokens
+    # aux exp arbitraires (cas « token expire »).
+    test.jwt_encoder:
+      alias: lexik_jwt_authentication.encoder
+      public: true
