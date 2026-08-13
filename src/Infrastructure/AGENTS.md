@@ -229,8 +229,8 @@ Deux périmètres, jamais mélangés :
 
 - **`tests/Infrastructure/Unit/`** — `PHPUnit\Framework\TestCase` uniquement. Aucun `bootKernel()`,
   aucun accès conteneur, aucune base : l'adapter est instancié à la main avec des doubles.
-  Suites : `infra.symfony.command`, `infra.api-platform.encoder`, `infra.api-platform.serializer`,
-  `infra.messenger.event`, `infra.cache`.
+  Suites : `infra.symfony.command`, `infra.symfony.messenger`, `infra.api-platform.encoder`,
+  `infra.api-platform.serializer`, `infra.adapter.catalog`.
 - **`tests/Infrastructure/Integration/`** — `KernelTestCase`, via `MongoPersistenceTestCase` : ce
   qu'on ne peut vérifier qu'avec un vrai MongoDB (mapping, index, transactions). Suite :
   `infra.persist`.

@@ -85,4 +85,62 @@ final class ProductRepositoryTest extends MongoPersistenceTestCase
 
         self::assertSame(1, $res['totalItems']);
     }
+
+    public function testFindByIdsResolvesSeveralProductsInOneRead(): void
+    {
+        $guitares = $this->aCategory('Guitares');
+        $strat = $this->aProduct('Stratocaster', $guitares->getId());
+        $tele = $this->aProduct('Telecaster', $guitares->getId());
+
+        $this->transactional->transactional(function () use ($guitares, $strat, $tele): void {
+            $this->categories->save($guitares);
+            $this->products->save($strat);
+            $this->products->save($tele);
+            $this->products->save($this->aProduct('Jazz Bass', $guitares->getId()));
+        });
+
+        $found = $this->products->findByIds([$strat->getId(), $tele->getId()]);
+
+        $ids = array_map(static fn ($product): string => $product->getId()->toString(), $found);
+        sort($ids);
+        $expected = [$strat->getId()->toString(), $tele->getId()->toString()];
+        sort($expected);
+
+        self::assertSame($expected, $ids);
+    }
+
+    public function testFindByIdsReturnsNothingForAnEmptyList(): void
+    {
+        $guitares = $this->aCategory('Guitares');
+
+        $this->transactional->transactional(function () use ($guitares): void {
+            $this->categories->save($guitares);
+            $this->products->save($this->aProduct('Stratocaster', $guitares->getId()));
+        });
+
+        self::assertSame([], $this->products->findByIds([]));
+    }
+
+    /**
+     * Le contrat qui compte pour le panier : un identifiant introuvable est simplement absent
+     * du resultat, sans exception ni trou d'index. C'est ce qui permet a une ligne de panier
+     * dont le produit a ete supprime d'etre ignoree a l'affichage plutot que de faire tomber
+     * toute la lecture.
+     */
+    public function testFindByIdsSkipsUnknownIdentifiers(): void
+    {
+        $guitares = $this->aCategory('Guitares');
+        $strat = $this->aProduct('Stratocaster', $guitares->getId());
+        $ghost = $this->products->nextIdentity();
+
+        $this->transactional->transactional(function () use ($guitares, $strat): void {
+            $this->categories->save($guitares);
+            $this->products->save($strat);
+        });
+
+        $found = $this->products->findByIds([$strat->getId(), $ghost]);
+
+        self::assertCount(1, $found);
+        self::assertSame($strat->getId()->toString(), $found[0]->getId()->toString());
+    }
 }

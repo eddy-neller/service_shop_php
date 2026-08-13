@@ -36,6 +36,20 @@
         <testsuite name="pres.state.catalog">
             <directory>tests/Presentation/Unit/State/Catalog</directory>
         </testsuite>
+
+        <!-- Garde-fous transverses. Ils ne testent aucun comportement : ils balayent `src/`
+             et cassent le build des qu'un Model, un VO, un State ou un cas d'usage est livre
+             sans test, ou qu'un handler s'ecarte de la convention de nommage sur laquelle
+             repose le routage Messenger. Les retirer rend ces oublis invisibles. -->
+        <testsuite name="domain.shared">
+            <directory>tests/Domain/SharedKernel/Unit</directory>
+        </testsuite>
+        <testsuite name="appli.shared">
+            <directory>tests/Application/Unit/Shared</directory>
+        </testsuite>
+        <testsuite name="pres.state.shared">
+            <directory>tests/Presentation/Unit/State/Shared</directory>
+        </testsuite>
         <testsuite name="infra.symfony.command">
             <directory>tests/Infrastructure/Unit/Symfony/Command</directory>
         </testsuite>

@@ -147,8 +147,8 @@ Calculs de montants/totaux, conversions d'unités monétaires (euros↔cents), a
 
 - Chaque handler dépend d'interfaces (Ports) → testable avec des mocks (`UserRepositoryInterface`, `ClockInterface`, …), sans kernel.
 - **Aucun** attribut/annotation framework dans Application (`#[AsMessageHandler]`, `#[AutowireIterator]`, …) → wiring uniquement dans Infrastructure.
-- **Test obligatoire par use case** : chaque `*Command`/`*Query` doit avoir sa classe `*Test` (ex. `AddToCartCommand` → `AddToCartTest`), dans `tests/Application/Unit/<Contexte>/UseCase/Command|Query[/<sous-domaine>]/`. **Convention non outillée dans ce dépôt** : `HandlerConventionTest` (suite `appli.shared`) n'a pas été reprise du monolithe, donc un handler livré sans test passe la CI. À vérifier à la relecture, ou à porter.
-- Suites : `appli.catalog` (cf. `AGENTS.md` racine).
+- **Test obligatoire par use case** : chaque `*Command`/`*Query` doit avoir sa classe `*Test` (ex. `AddToCartCommand` → `AddToCartTest`), dans `tests/Application/Unit/<Contexte>/UseCase/Command|Query/`. **Cette convention est outillée** : `HandlerConventionTest` (suite `appli.shared`) casse le build si un cas d'usage n'a pas son handler, si le `handle()` de ce handler ne type pas exactement son message — c'est ce type qui sert de clé de routage à Messenger, donc une dérive ici ne se voit qu'à l'exécution — ou si le test manque.
+- Suites : `appli.catalog`, `appli.shared` (cf. `AGENTS.md` racine).
 
 ### Conventions de tests unitaires
 

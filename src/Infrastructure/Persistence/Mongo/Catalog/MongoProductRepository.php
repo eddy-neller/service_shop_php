@@ -141,6 +141,34 @@ final readonly class MongoProductRepository implements ProductRepositoryInterfac
     }
 
     /**
+     * @param ProductId[] $ids
+     *
+     * @return DomainProduct[]
+     */
+    public function findByIds(array $ids): array
+    {
+        if ([] === $ids) {
+            return [];
+        }
+
+        $documents = $this->documentManager
+            ->getRepository(ProductDocument::class)
+            ->findBy(['id' => ['$in' => array_map(
+                static fn (ProductId $id): string => $id->toString(),
+                $ids,
+            )]]);
+
+        $products = [];
+        foreach ($documents as $document) {
+            if ($document instanceof ProductDocument) {
+                $products[] = $this->mapper->toDomain($document);
+            }
+        }
+
+        return $products;
+    }
+
+    /**
      * @param list<ProductDocument> $documents
      *
      * @return array<string, DomainCategory>

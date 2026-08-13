@@ -349,11 +349,34 @@ jouee nulle part en CI — et l'oubli passerait pour un run vert.
 | `infra.symfony.command` | `tests/Infrastructure/Unit/Symfony/Command` | non |
 | `infra.api-platform.encoder` | `tests/Infrastructure/Unit/ApiPlatform/Encoder` | non |
 | `infra.api-platform.serializer` | `tests/Infrastructure/Unit/ApiPlatform/Serializer` | non |
+| `infra.symfony.messenger` | `tests/Infrastructure/Unit/Symfony/Messenger` | non |
 | `infra.adapter.catalog` | `tests/Infrastructure/Unit/Adapter/Catalog` | non |
-| `infra.cache` | `tests/Infrastructure/Unit/Cache` | non |
+| `domain.shared` | `tests/Domain/SharedKernel/Unit` | non |
+| `appli.shared` | `tests/Application/Unit/Shared` | non |
+| `pres.state.shared` | `tests/Presentation/Unit/State/Shared` | non |
 | `infra.persist` | `tests/Infrastructure/Integration/Persistence` | **oui** |
 | `api.catalog.category` | `tests/Presentation/Api/Catalog/CategoryTest.php` | **oui** |
 | `api.catalog.product` | `tests/Presentation/Api/Catalog/ProductTest.php` | **oui** |
+
+### Les trois garde-fous ne testent aucun comportement
+
+`domain.shared`, `appli.shared` et `pres.state.shared` portent `DomainTestCoverageTest`,
+`HandlerConventionTest` et `StateTestCoverageTest` : ils balayent `src/` et cassent le build des
+qu'un `Model`, un Value Object, un State ou un cas d'usage est livre **sans test**, ou qu'un handler
+s'ecarte de la convention de nommage sur laquelle repose le routage Messenger.
+
+Ils ont ete poses au jalon 3, avant l'arrivee de `Customer` et `Ordering`, et leur premier run a
+trouve ce que personne n'avait vu : `Money`, `Slug` et `Uuid` du `SharedKernel` etaient arrives au
+jalon 2 **sans leurs tests**. C'est exactement ce qu'ils servent a empecher.
+
+Contrairement a ceux du monolithe, ils n'ont **aucune liste d'exclusion**. La trappe existait la-bas
+pour du code mort (`Order`) et des States non encore testes ; ici elle n'a aucun utilisateur, et une
+trappe pre-percee finit toujours par servir. En rajouter une doit rester un geste visible en diff,
+pas remplir un trou deja pret.
+
+Attention : **la tache `phpstan` de grumphp n'analyse que les fichiers suivis par git.** Un fichier
+neuf non encore `git add` passe au vert sans avoir ete regarde. Lancer
+`vendor/bin/phpstan analyse -c phpstan.dist.neon` a la main avant de conclure.
 
 `domain.catalog` et `pres.state.catalog` sont reprises **telles quelles** du monolithe : si l'une
 d'elles doit etre retouchee pour passer au vert, c'est que la persistance a fuite hors

@@ -100,7 +100,9 @@ src/Presentation/
 
 ## Tests Presentation
 
-Suites : `pres.state.sendmail`, `pres.state.shared`, `pres.state.user`, `pres.state.catalog` ; API (exécutables si la stack Docker tourne, cf. `AGENTS.md` racine) : `api.shop.address`, `api.shop.cart`, `api.catalog.category`, `api.shop.customer`, `api.catalog.product`, `api.user`.
+Suites : `pres.state.catalog`, `pres.state.shared` (garde-fou `StateTestCoverageTest`) ; API (exécutables seulement si la stack Docker tourne, cf. `AGENTS.md` racine) : `api.catalog.category`, `api.catalog.product`.
+
+L'intégration Doctrine d'API Platform étant coupée dans ce service, **tous** les providers et processors sont écrits à la main : `pres.state.shared` couvre donc l'intégralité du chemin HTTP de lecture et d'écriture, pas un résidu.
 
 - Ne jamais modifier `tests/Presentation/Api/BaseTest.php` pour faire passer un test API spécifique. Ce helper est transverse. Le faire si demande explicite de refactor global de `BaseTest`.
 - Tests API : ne pas utiliser `ApiTestCase::findIriBy()` pour résoudre l'IRI d'une fixture quand les `ApiResource` Presentation sont séparées des entités Doctrine (`stateOptions: entityClass`). API Platform reçoit alors l'entité Doctrine, qui n'est pas une ressource exposée, et peut générer une IRI Skolem (`/.well-known/genid/...`). Résoudre l'entité avec `getInstance(...)`, asserter son type, puis construire l'IRI attendue depuis la route API réelle (`self::URL_API_OPE . '/' . $entity->getId()->toString()`). `findIriByHttp()` reste réservé aux cas où la valeur recherchée dépend réellement du rendu HTTP, notamment les champs traduits.
