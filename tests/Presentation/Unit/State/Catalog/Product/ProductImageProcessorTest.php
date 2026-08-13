@@ -16,7 +16,6 @@ use App\Domain\Catalog\ValueObject\CategoryId;
 use App\Domain\Catalog\ValueObject\CategoryTitle;
 use App\Domain\Catalog\ValueObject\ProductDescription;
 use App\Domain\Catalog\ValueObject\ProductId;
-use App\Domain\Catalog\ValueObject\ProductImage;
 use App\Domain\Catalog\ValueObject\ProductSubtitle;
 use App\Domain\Catalog\ValueObject\ProductTitle;
 use App\Domain\SharedKernel\ValueObject\Money;
@@ -198,7 +197,7 @@ final class ProductImageProcessorTest extends TestCase
             price: Money::fromInt(1299),
             slug: Slug::fromString('product-title'),
             categoryId: CategoryId::fromString('550e8400-e29b-41d4-a716-446655440001'),
-            image: ProductImage::create('product.jpg'),
+            imageName: 'product.jpg',
             createdAt: $now,
             updatedAt: $now,
         );

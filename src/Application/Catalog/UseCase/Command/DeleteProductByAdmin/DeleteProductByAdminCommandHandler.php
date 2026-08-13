@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Application\Catalog\UseCase\Command\DeleteProductByAdmin;
 
 use App\Application\Catalog\Port\CategoryRepositoryInterface;
+use App\Application\Catalog\Port\ProductImageStorageInterface;
 use App\Application\Catalog\Port\ProductRepositoryInterface;
 use App\Application\Shared\CQRS\Command\CommandHandlerInterface;
 use App\Application\Shared\Port\ClockInterface;
+use App\Application\Shared\Port\DomainEventBusInterface;
 use App\Application\Shared\Port\TransactionalInterface;
 use App\Domain\Catalog\Exception\CategoryNotFoundException;
 use App\Domain\Catalog\Exception\ProductNotFoundException;
@@ -18,8 +20,10 @@ final readonly class DeleteProductByAdminCommandHandler implements CommandHandle
     public function __construct(
         private ProductRepositoryInterface $productRepository,
         private CategoryRepositoryInterface $categoryRepository,
+        private ProductImageStorageInterface $imageStorage,
         private ClockInterface $clock,
         private TransactionalInterface $transactional,
+        private DomainEventBusInterface $eventBus,
     ) {
     }
 
@@ -27,7 +31,7 @@ final readonly class DeleteProductByAdminCommandHandler implements CommandHandle
     {
         $productId = ProductId::fromString($command->productId);
 
-        $this->transactional->transactional(function () use ($productId): void {
+        $imageName = $this->transactional->transactional(function () use ($productId): ?string {
             $product = $this->productRepository->findById($productId);
 
             if (null === $product) {
@@ -48,6 +52,13 @@ final readonly class DeleteProductByAdminCommandHandler implements CommandHandle
             $this->categoryRepository->save($category);
 
             $this->productRepository->delete($product);
+            $this->eventBus->publishAll($product->releaseEvents());
+
+            return $product->getImageName();
         });
+
+        if (null !== $imageName) {
+            $this->imageStorage->remove($imageName);
+        }
     }
 }

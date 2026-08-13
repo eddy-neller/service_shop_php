@@ -96,30 +96,12 @@ final readonly class MongoCategoryRepository implements CategoryRepositoryInterf
         }
     }
 
-    /**
-     * Reproduit ce que faisaient `cascade: ['remove']` et `ON DELETE CASCADE` cote SQL.
-     *
-     * MongoDB n'a ni cle etrangere ni cascade : sans ce nettoyage explicite, supprimer une
-     * categorie laisserait ses produits pointer vers un `categoryId` mort, et ses
-     * sous-categories vers un parent inexistant — silencieusement, sans une erreur.
-     */
     public function delete(DomainCategory $category): void
     {
         $document = $this->findDocument($category->getId());
         if (null === $document) {
             return;
         }
-
-        foreach ($this->descendantIdsOf($document->id) as $descendantId) {
-            $this->removeProductsOf($descendantId);
-
-            $descendant = $this->documentManager->find(CategoryDocument::class, $descendantId);
-            if ($descendant instanceof CategoryDocument) {
-                $this->documentManager->remove($descendant);
-            }
-        }
-
-        $this->removeProductsOf($document->id);
 
         $this->documentManager->remove($document);
     }
@@ -154,21 +136,36 @@ final readonly class MongoCategoryRepository implements CategoryRepositoryInterf
             ? null
             : $this->documentManager->find(CategoryDocument::class, $document->parentId);
 
-        $childDocuments = $this->documentManager
+        $childDocuments = [];
+        $children = $this->documentManager
             ->getRepository(CategoryDocument::class)
             ->findBy(['parentId' => $document->id]);
 
+        foreach ($children as $child) {
+            if ($child instanceof CategoryDocument) {
+                $childDocuments[] = $child;
+            }
+        }
+
+        // La vue d'item expose `hasChildren` sur chaque enfant direct. Une requete
+        // groupee conserve cette information sans faire un `count()` par enfant.
+        $childIdsHavingChildren = array_fill_keys($this->parentIdsHavingChildren($childDocuments), true);
+
         $children = [];
         foreach ($childDocuments as $child) {
-            if ($child instanceof CategoryDocument) {
-                $children[] = $this->toDomainWithChildren($child);
-            }
+            $children[] = $this->mapper->toDomain(
+                $child,
+                hasChildren: isset($childIdsHavingChildren[$child->id]),
+            );
         }
 
         return [
             'category' => $this->mapper->toDomain($document, hasChildren: [] !== $children),
             'parent' => $parentDocument instanceof CategoryDocument
-                ? $this->toDomainWithChildren($parentDocument)
+                // La categorie courante est necessairement un enfant direct de ce parent :
+                // inutile de refaire un `count(parentId = parent.id)` uniquement pour
+                // recalculer une information deja prouvee par la relation chargee ci-dessus.
+                ? $this->mapper->toDomain($parentDocument, hasChildren: true)
                 : null,
             'children' => [] === $children ? null : $children,
         ];
@@ -244,41 +241,6 @@ final readonly class MongoCategoryRepository implements CategoryRepositoryInterf
             $this->documentManager->persist($child);
 
             $this->shiftDescendantLevels($child->id, $child->level);
-        }
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function descendantIdsOf(string $categoryId): array
-    {
-        $ids = [];
-
-        $children = $this->documentManager
-            ->getRepository(CategoryDocument::class)
-            ->findBy(['parentId' => $categoryId]);
-
-        foreach ($children as $child) {
-            if (!$child instanceof CategoryDocument) {
-                continue;
-            }
-
-            $ids = [...$ids, ...$this->descendantIdsOf($child->id), $child->id];
-        }
-
-        return $ids;
-    }
-
-    private function removeProductsOf(string $categoryId): void
-    {
-        $products = $this->documentManager
-            ->getRepository(ProductDocument::class)
-            ->findBy(['categoryId' => $categoryId]);
-
-        foreach ($products as $product) {
-            if ($product instanceof ProductDocument) {
-                $this->documentManager->remove($product);
-            }
         }
     }
 

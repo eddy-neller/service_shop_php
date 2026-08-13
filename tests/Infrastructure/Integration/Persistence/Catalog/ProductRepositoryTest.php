@@ -16,6 +16,29 @@ use App\Tests\Infrastructure\Integration\Persistence\MongoPersistenceTestCase;
  */
 final class ProductRepositoryTest extends MongoPersistenceTestCase
 {
+    public function testFindWithCategoryByIdLoadsTheProductCategoryWithoutItsTreeState(): void
+    {
+        $root = $this->aCategory('Root');
+        $guitares = $this->aCategory('Guitares', $root->getId());
+        $product = $this->aProduct('Stratocaster', $guitares->getId());
+
+        $this->transactional->transactional(function () use ($root, $guitares, $product): void {
+            $this->categories->save($root);
+            $this->categories->save($guitares);
+            $this->categories->save($this->aCategory('Electric guitars', $guitares->getId()));
+
+            $this->products->save($product);
+        });
+
+        $item = $this->products->findWithCategoryById($product->getId());
+
+        self::assertNotNull($item);
+        self::assertSame($product->getId()->toString(), $item['product']->getId()->toString());
+        self::assertNotNull($item['category']);
+        self::assertSame($guitares->getId()->toString(), $item['category']->getId()->toString());
+        self::assertFalse($item['category']->hasChildren());
+    }
+
     public function testCountNbProductByCategory(): void
     {
         $guitares = $this->aCategory('Guitares');

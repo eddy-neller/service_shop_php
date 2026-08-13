@@ -1,7 +1,12 @@
 # CQRS synchrone avec Symfony Messenger
 
-Ce service utilise Messenger uniquement comme adaptateur synchrone pour les commandes et les
-queries du catalogue. Il n'y a actuellement ni transport asynchrone, ni worker, ni outbox active.
+Ce service utilise Messenger de deux façons, qu'il ne faut pas confondre : comme **adaptateur
+synchrone** pour les commandes et les queries du catalogue, décrit ici, et comme **consommateur
+asynchrone** de l'outbox des Domain Events, décrit dans [`domain_events.md`](domain_events.md).
+
+Les deux ne partagent que le composant. `command.bus` et `query.bus` n'ont pas de transport et
+s'exécutent dans le processus HTTP ; `event.bus` n'est jamais dispatché depuis une requête, il est
+alimenté par la collection `domain_event_outbox` et consommé par un worker.
 
 ## Architecture
 
@@ -28,6 +33,7 @@ middlewares Messenger sont confinés à `src/Infrastructure/Messenger/CQRS/`.
 |---|---|---|
 | `command.bus` | commandes d'écriture | aucun : exécution dans le processus HTTP |
 | `query.bus` | queries de lecture | aucun : exécution dans le processus HTTP |
+| `event.bus` | réactions aux Domain Events | `mongodb-outbox://domain_events`, consommé par un worker |
 
 Les adapters exigent exactement un `HandledStamp` et renvoient son résultat. Une commande dont
 le handler retourne `void` produit donc légitimement `null`. Router par erreur un message CQRS vers
@@ -55,18 +61,22 @@ qui appellent directement le handler sans passer par Messenger.
 ## Middlewares
 
 ```text
-command.bus : logging → exception unwrapping → middlewares Messenger → handler
-query.bus   : logging → exception unwrapping → middlewares Messenger → handler
+command.bus : logging → exception unwrapping → invalidation de cache → handler
+query.bus   : logging → exception unwrapping → cache de queries      → handler
+event.bus   : middlewares Messenger par défaut, allow_no_handlers    → handler
 ```
 
 `UnwrapHandlerFailedExceptionMiddleware` relance l'unique exception métier enveloppée par
 Messenger dans `HandlerFailedException`. Les mappings d'erreur d'API Platform reçoivent ainsi les
 exceptions du domaine (`CategoryNotFoundException`, etc.) plutôt qu'une exception d'infrastructure.
 
-Le middleware de cache de queries n'est volontairement pas enregistré. Les interfaces
-`CacheableQueryInterface` et les métadonnées des listes de produits/catégories préparent l'étape B,
-mais un cache sans invalidation pilotée par les Domain Events servirait des lectures périmées après
-la première écriture. Voir [`redis_query_cache.md`](redis_query_cache.md).
+`QueryCacheMiddleware` sert les queries de collection et d'item depuis le pool `cache.tag`, et
+`CacheInvalidationMiddleware` purge leurs tags dès qu'une commande publie un Domain Event. Les deux
+ont été livrés **ensemble** : l'un sans l'autre servirait des lectures périmées dès la première
+écriture. Voir [`query_cache.md`](query_cache.md).
+
+`event.bus` n'a **pas** d'`UnwrapHandlerFailedExceptionMiddleware`, contrairement aux deux autres :
+Messenger s'appuie sur `HandlerFailedException` pour arbitrer retry et échec définitif.
 
 ## Transactions des commandes
 
@@ -75,7 +85,9 @@ transaction ODM porte le **flush unique** effectué à la sortie du callback : l
 seulement `persist()` ou `remove()` et ne doivent jamais flusher eux-mêmes.
 
 MongoDB ne rend transactionnelles que les écritures d'un même flush. Ainsi, la création d'un
-produit et l'incrément de `nbProduct` de sa catégorie sont validés ensemble. Les lectures dans le
+produit, l'incrément de `nbProduct` de sa catégorie et la ligne d'outbox de `ProductCreatedEvent`
+sont validés ensemble — c'est pour cette dernière que `MongoDomainEventBus` `persist()` au lieu
+d'écrire par le pilote. Les lectures dans le
 callback restent hors transaction ; les index uniques MongoDB, posés par `make db-index`, assurent
 l'unicité réelle face à la concurrence. Le replica set `rs0` de `docker-compose.yaml` est donc un
 prérequis fonctionnel, pas une option de haute disponibilité.
@@ -87,7 +99,9 @@ prérequis fonctionnel, pas une option de haute disponibilité.
 ```bash
 bin/console debug:messenger command.bus
 bin/console debug:messenger query.bus
+bin/console debug:messenger event.bus
 ```
 
 Chaque Command ou Query applicative doit apparaître une seule fois, sur son bus respectif, avec la
-méthode `handle`.
+méthode `handle`. Sur `event.bus`, `LogDomainEventHandler` apparaît une fois, typé sur
+`DomainEventInterface`.

@@ -14,9 +14,6 @@ interface CategoryRepositoryInterface
 
     public function nextIdentity(): CategoryId;
 
-    /**
-     * @return array{items: list<Category>, totalItems: int, totalPages: int}
-     */
     public function list(array $filters, array $orderBy, int $page, int $itemsPerPage): array;
 
     public function save(Category $category): void;
@@ -27,8 +24,5 @@ interface CategoryRepositoryInterface
 
     public function findByTitle(CategoryTitle $title): ?Category;
 
-    /**
-     * @return array{category: Category, parent: ?Category, children: ?list<Category>}|null
-     */
     public function findTreeById(CategoryId $id): ?array;
 }

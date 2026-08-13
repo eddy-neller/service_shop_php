@@ -7,12 +7,46 @@ framework:
         middleware:
           - App\Infrastructure\Symfony\Messenger\CQRS\Middleware\CommandLoggingMiddleware
           - App\Infrastructure\Symfony\Messenger\CQRS\Middleware\UnwrapHandlerFailedExceptionMiddleware
+          # Entoure le handler, donc s'execute apres son `transactional()` : les tags sont
+          # purges une fois le commit acquis, et avant que la reponse parte.
+          - App\Infrastructure\Symfony\Messenger\CQRS\Middleware\CacheInvalidationMiddleware
       query.bus:
         middleware:
           - App\Infrastructure\Symfony\Messenger\CQRS\Middleware\QueryLoggingMiddleware
           - App\Infrastructure\Symfony\Messenger\CQRS\Middleware\UnwrapHandlerFailedExceptionMiddleware
+          - App\Infrastructure\Symfony\Messenger\CQRS\Middleware\QueryCacheMiddleware
+      event.bus:
+        default_middleware:
+          # Un fait metier sans reaction dediee ne doit pas faire echouer le worker : on
+          # peut donc emettre un evenement avant d'ecrire ce qui l'exploitera.
+          allow_no_handlers: true
+        # Pas de `UnwrapHandlerFailedExceptionMiddleware` ici, contrairement aux deux autres
+        # bus : Messenger s'appuie sur `HandlerFailedException` pour arbitrer retry et echec
+        # definitif. La deballer degraderait la strategie de retry.
 
-# Le cache des queries (QueryCacheMiddleware) et son pendant d'invalidation
-# (CacheInvalidationMiddleware) n'arrivent qu'a l'etape B : l'invalidation est pilotee
-# par les Domain Events, qui n'existent pas encore. Un cache sans invalidation
-# renverrait des lectures perimees des la premiere ecriture.
+    failure_transport: failed_domain_events
+
+    transports:
+      # Outbox transactionnel. Le chemin nominal n'emet pas de `send()` : `MongoDomainEventBus`
+      # ecrit le document via l'unite de travail de l'ODM, donc dans le flush qui commite
+      # l'agregat. Ce transport n'est ici que pour le consommer — et pour les chemins de
+      # reprise (retry differe, rejeu depuis la file d'echec), qui eux passent par `send()`.
+      domain_events:
+        dsn: 'mongodb-outbox://domain_events'
+        options:
+          # Un message reserve depuis plus longtemps que ca est repris : c'est ce qui rattrape
+          # un worker tue en plein traitement, et ce qui rend la livraison au-moins-une-fois.
+          redeliver_timeout: 3600
+        retry_strategy:
+          max_retries: 6
+          delay: 10000
+          multiplier: 2
+          max_delay: 300000
+          jitter: 0.1
+      # File d'echec : meme collection, autre `queueName`. Consommee manuellement
+      # (`messenger:failed:show`, `messenger:failed:retry`), jamais par un worker en attente.
+      failed_domain_events:
+        dsn: 'mongodb-outbox://failed_domain_events'
+
+    routing:
+      App\Domain\SharedKernel\Event\DomainEventInterface: domain_events

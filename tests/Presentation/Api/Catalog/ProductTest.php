@@ -10,6 +10,7 @@ use App\Tests\Presentation\Api\BaseTest;
 use Faker\Factory;
 use Generator;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
@@ -743,6 +744,38 @@ final class ProductTest extends BaseTest
             $options,
             $exception
         );
+    }
+
+    public function testUploadImageProductRejectsGifContent(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'product-gif-');
+        if (false === $path) {
+            self::fail('Unable to create temporary GIF upload.');
+        }
+
+        file_put_contents($path, base64_decode('R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='));
+        $file = new UploadedFile($path, 'product.gif', 'image/gif', null, true);
+
+        try {
+            $this->testException(
+                Request::METHOD_POST,
+                $this->iri . '/image',
+                [
+                    'auth_bearer' => self::PLACEHOLDERS['TOKENS']['ADMIN'],
+                    'headers' => ['Content-Type' => 'multipart/form-data'],
+                    'extra' => ['files' => ['imageFile' => $file]],
+                ],
+                [
+                    'class' => ClientExceptionInterface::class,
+                    'code' => Response::HTTP_UNPROCESSABLE_ENTITY,
+                    'message' => 'Invalid product image file type: image/gif.',
+                ],
+            );
+        } finally {
+            if (is_file($path)) {
+                unlink($path);
+            }
+        }
     }
 
     private static function getFakeDataCatalogProduct(): array

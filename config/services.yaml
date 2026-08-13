@@ -37,6 +37,8 @@ services:
       - '../src/Presentation/Catalog/ApiResource/'
       - '../src/Presentation/Catalog/Dto/'
       - '../src/Infrastructure/Symfony/DataFixtures/'
+      - '../src/Infrastructure/Symfony/Messenger/Transport/MongoOutboxTransport.php'
+      - '../src/Infrastructure/Symfony/Messenger/Transport/MongoOutboxReceivedStamp.php'
 
 when@dev:
   services:

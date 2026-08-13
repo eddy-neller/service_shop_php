@@ -8,6 +8,7 @@ use App\Application\Catalog\Port\CategoryRepositoryInterface;
 use App\Application\Catalog\ReadModel\Catalog\CategoryItem;
 use App\Application\Shared\CQRS\Command\CommandHandlerInterface;
 use App\Application\Shared\Port\ClockInterface;
+use App\Application\Shared\Port\DomainEventBusInterface;
 use App\Application\Shared\Port\SlugGeneratorInterface;
 use App\Application\Shared\Port\TransactionalInterface;
 use App\Domain\Catalog\Exception\CatalogDomainException;
@@ -25,6 +26,7 @@ final readonly class UpdateCategoryByAdminCommandHandler implements CommandHandl
         private ClockInterface $clock,
         private TransactionalInterface $transactional,
         private SlugGeneratorInterface $slugGenerator,
+        private DomainEventBusInterface $eventBus,
     ) {
     }
 
@@ -89,6 +91,10 @@ final readonly class UpdateCategoryByAdminCommandHandler implements CommandHandl
         }
 
         $this->repository->save($category);
+
+        // Un PATCH qui touche titre, description et parent publie trois faits distincts :
+        // ce sont trois decisions, meme si l'appelant les a groupees dans une requete.
+        $this->eventBus->publishAll($category->releaseEvents());
 
         $categoryTree = $this->repository->findTreeById($categoryId);
 

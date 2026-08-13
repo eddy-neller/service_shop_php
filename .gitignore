@@ -14,8 +14,8 @@
 
 # Assets and user uploads
 /assets/*
-/public/uploads/images/shop/product/*
-!public/uploads/images/shop/product/.gitkeep
+/public/uploads/images/catalog/product/*
+!public/uploads/images/catalog/product/.gitkeep
 
 ###> lexik/jwt-authentication-bundle ###
 # La cle publique de production est copiee localement, pas versionnee.

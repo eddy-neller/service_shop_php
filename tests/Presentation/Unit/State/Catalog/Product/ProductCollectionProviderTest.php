@@ -16,7 +16,6 @@ use App\Domain\Catalog\ValueObject\CategoryId;
 use App\Domain\Catalog\ValueObject\CategoryTitle;
 use App\Domain\Catalog\ValueObject\ProductDescription;
 use App\Domain\Catalog\ValueObject\ProductId;
-use App\Domain\Catalog\ValueObject\ProductImage;
 use App\Domain\Catalog\ValueObject\ProductSubtitle;
 use App\Domain\Catalog\ValueObject\ProductTitle;
 use App\Domain\SharedKernel\ValueObject\Money;
@@ -173,7 +172,7 @@ final class ProductCollectionProviderTest extends TestCase
             now: new DateTimeImmutable('2025-01-01 10:00:00'),
         );
 
-        $product->updateImage(ProductImage::create('product.jpg'), new DateTimeImmutable('2025-01-02 10:00:00'));
+        $product->updateImage('product.jpg', new DateTimeImmutable('2025-01-02 10:00:00'));
 
         return $product;
     }

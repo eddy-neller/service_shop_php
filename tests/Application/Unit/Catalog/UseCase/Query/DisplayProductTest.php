@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Tests\Application\Unit\Catalog\UseCase\Query;
 
-use App\Application\Catalog\Port\CategoryRepositoryInterface;
 use App\Application\Catalog\Port\ProductRepositoryInterface;
 use App\Application\Catalog\UseCase\Query\DisplayProduct\DisplayProductQuery;
 use App\Application\Catalog\UseCase\Query\DisplayProduct\DisplayProductQueryHandler;
@@ -32,18 +31,12 @@ final class DisplayProductTest extends TestCase
 
     private ProductRepositoryInterface&MockObject $productRepository;
 
-    private CategoryRepositoryInterface&MockObject $categoryRepository;
-
     private DisplayProductQueryHandler $handler;
 
     protected function setUp(): void
     {
         $this->productRepository = $this->createMock(ProductRepositoryInterface::class);
-        $this->categoryRepository = $this->createMock(CategoryRepositoryInterface::class);
-        $this->handler = new DisplayProductQueryHandler(
-            $this->productRepository,
-            $this->categoryRepository,
-        );
+        $this->handler = new DisplayProductQueryHandler($this->productRepository);
     }
 
     public function testHandleReturnsProductViewWhenFound(): void
@@ -55,14 +48,9 @@ final class DisplayProductTest extends TestCase
         $query = new DisplayProductQuery($productId->toString());
 
         $this->productRepository->expects($this->once())
-            ->method('findById')
+            ->method('findWithCategoryById')
             ->with($productId)
-            ->willReturn($product);
-
-        $this->categoryRepository->expects($this->once())
-            ->method('findById')
-            ->with($categoryId)
-            ->willReturn($category);
+            ->willReturn(['product' => $product, 'category' => $category]);
 
         $output = $this->handler->handle($query);
 
@@ -73,14 +61,11 @@ final class DisplayProductTest extends TestCase
 
     public function testHandleThrowsWhenProductNotFound(): void
     {
-        $this->categoryRepository->expects($this->never())
-            ->method('findById');
-
         $productId = ProductId::fromString(self::PRODUCT_ID);
         $query = new DisplayProductQuery($productId->toString());
 
         $this->productRepository->expects($this->once())
-            ->method('findById')
+            ->method('findWithCategoryById')
             ->with($productId)
             ->willReturn(null);
 
@@ -94,23 +79,28 @@ final class DisplayProductTest extends TestCase
     {
         $productId = ProductId::fromString(self::PRODUCT_ID);
         $categoryId = CategoryId::fromString(self::CATEGORY_ID);
-        $product = $this->createProduct($productId, $categoryId);
         $query = new DisplayProductQuery($productId->toString());
 
         $this->productRepository->expects($this->once())
-            ->method('findById')
+            ->method('findWithCategoryById')
             ->with($productId)
-            ->willReturn($product);
-
-        $this->categoryRepository->expects($this->once())
-            ->method('findById')
-            ->with($categoryId)
-            ->willReturn(null);
+            ->willReturn(['product' => $this->createProduct($productId, $categoryId), 'category' => null]);
 
         $this->expectException(CategoryNotFoundException::class);
         $this->expectExceptionMessage('Category not found.');
 
         $this->handler->handle($query);
+    }
+
+    public function testQueryCacheMetadata(): void
+    {
+        $this->productRepository->expects($this->never())->method('findWithCategoryById');
+
+        $query = new DisplayProductQuery(self::PRODUCT_ID);
+
+        $this->assertSame('product-item-' . self::PRODUCT_ID, $query->cacheKey());
+        $this->assertSame(3600, $query->cacheTtl());
+        $this->assertSame(['categories-collection', 'products-collection'], $query->cacheTags());
     }
 
     private function createProduct(ProductId $productId, CategoryId $categoryId): Product

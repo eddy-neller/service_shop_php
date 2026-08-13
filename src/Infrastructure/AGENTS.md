@@ -4,7 +4,8 @@
 > Couche `src/Infrastructure/`. Règles transverses : voir `AGENTS.md` racine.
 >
 > **Ce fichier décrit `service_shop`, pas le monolithe.** La persistance est MongoDB via Doctrine
-> **ODM** ; il n'y a ni ORM, ni migration, ni clé étrangère, ni broker, ni Redis. Une règle reprise
+> **ODM** ; il n'y a ni ORM, ni migration, ni clé étrangère, ni broker. Redis est autorisé seulement
+> pour le cache applicatif dédié et partagé entre les replicas de ce service. Une règle reprise
 > du monolithe et parlant de DQL, de `Paginator`, de `#[ORM\Index]` ou d'un `OneToMany` inverse ne
 > s'applique pas ici — elle a été retirée volontairement.
 
@@ -35,17 +36,22 @@
 | `Shared\Port\TransactionalInterface` | `MongoTransactional` | `Persistence/Mongo/` |
 | `Shared\Port\SlugGeneratorInterface` | `SymfonySlugGenerator` | `Adapter/Catalog/` |
 | `Shared\Port\FileInterface` | `SymfonyFileAdapter` | **`src/Presentation/Shared/Adapter/`** |
-| `Shared\Port\DomainEventBusInterface` | *aucune* | à écrire — étape B |
+| `Shared\Port\DomainEventBusInterface` | `MongoDomainEventBus` | `Symfony/Messenger/Event/` |
 | `Catalog\Port\CategoryRepositoryInterface` | `MongoCategoryRepository` | `Persistence/Mongo/Catalog/` |
 | `Catalog\Port\ProductRepositoryInterface` | `MongoProductRepository` | `Persistence/Mongo/Catalog/` |
-| `Catalog\Port\ProductImageUrlResolverInterface` | `ProductImageUrlResolver` | `Adapter/Catalog/` |
+| `Catalog\Port\ProductImageUrlResolverInterface` | `ProductImageUrlResolver` | `Adapter/Catalog/Storage/` |
+| `Catalog\Port\ProductImageStorageInterface` | `ProductImageStorage` | `Adapter/Catalog/Storage/` |
+| `Catalog\Port\ProductImageValidatorInterface` | `NativeProductImageValidator` | `Adapter/Catalog/Storage/` |
 
 Deux points contre-intuitifs dans ce tableau :
 
 - **`FileInterface` est implémenté dans Presentation**, pas ici : `SymfonyFileAdapter` enveloppe un
   `UploadedFile` HTTP, il n'a de sens qu'au contact de la requête. Ce n'est pas une entorse à corriger.
-- **`DomainEventBusInterface` n'a aucune implémentation.** Le port existe pour préserver la frontière,
-  pas parce que le mécanisme tourne (cf. [`docs/domain_events.md`](../../docs/domain_events.md)).
+- **`MongoDomainEventBus` vit dans `Symfony/Messenger/`, pas dans `Persistence/`**, alors qu'il
+  écrit un document. Il n'est pas un repository : il encode un message avec le codec Messenger et
+  délègue l'écriture à `Persistence/Mongo/Outbox/DomainEventOutbox`, seul endroit qui connaisse le
+  `DocumentManager`. C'est cette séparation qui permet au `send()` du transport de réutiliser
+  exactement le même encodage.
 
 ### Le binding est implicite, et c'est fragile
 
@@ -65,10 +71,18 @@ elle reste dans `src/Infrastructure/`, à côté de son implémentation.
 | Contrat interne | Implémentation | Consommateurs |
 |---|---|---|
 | `Adapter\Uuid\UuidGeneratorInterface` | `RamseyUuidGenerator` | repositories Mongo |
+| `Adapter\Cache\QueryCacheInterface` | `SymfonyTagAwareQueryCache` | les deux middlewares de cache |
+`QueryCacheInterface` est un contrat interne **par test** : aucun use case ne consomme son adapter.
+`CacheableQueryInterface`, côté Application, décrit ce qui est cachable — jamais où ni comment.
 
-`ProductImageStorage` (`Adapter/Catalog/`) n'a délibérément pas d'interface : un seul consommateur,
-aucune variation prévue. Remplace VichUploader, qui était branché sur les événements de cycle de vie
-de l'ORM.
+`ProductImageStorage` a une interface parce que les handlers de commande déposent puis, après un
+commit réussi, effacent les fichiers. Auparavant le dépôt vivait dans
+`MongoProductRepository::updateImage()` — un repository qui écrivait sur le disque, et un agrégat dont
+l'image changeait sans qu'il le sache, donc sans pouvoir enregistrer d'événement.
+
+Les images de produit reçoivent un nom aléatoire et une extension canonique dérivée du MIME vérifié ;
+le stockage fixe les permissions à `0644`. Un nom appartient à un seul produit, donc l'ancienne image
+peut être supprimée directement après le commit, sans comptage ni worker.
 
 > Avant de créer une interface dans `src/Application/…/Port`, vérifier qu'elle est bien injectée par
 > un handler ou un service applicatif. Sinon → `src/Infrastructure/`.
@@ -88,11 +102,10 @@ Détail et garde-fou : [`docs/src/Infrastructure/Persistence/Mongo/MongoTransact
 
 ### Ce que la base ne fait plus pour nous
 
-MongoDB n'a ni clé étrangère, ni cascade, ni nested set. Trois filets que la base posait côté
-monolithe sont désormais du code explicite, et c'est là que se logent les régressions :
+MongoDB n'a ni clé étrangère, ni cascade, ni nested set. La suppression d'une catégorie est donc
+autorisée par l'agrégat uniquement si elle est vide et sans enfant ; le repository retire alors son
+seul document. Les deux invariants qui nécessitent encore du code explicite sont :
 
-- **la suppression en cascade** — `MongoCategoryRepository::delete()` supprime le sous-arbre **puis**
-  les produits, à la main ;
 - **le `level` d'une catégorie** — calculé dans `save()`, et propagé à toute la descendance quand une
   catégorie change de parent (`shiftDescendantLevels()`) ;
 - **le `nbProduct` dénormalisé** — maintenu par le **cas d'usage** (`increaseProductCount()` /
@@ -125,27 +138,36 @@ en introduire de nouvelles dans un chemin qui doit être atomique.
 
 ---
 
-## Domain Events : rien n'est branché
+## Domain Events : l'outbox rejoint le flush
 
-**Il n'existe aujourd'hui ni implémentation de `DomainEventBusInterface`, ni transport, ni worker,
-ni collection d'outbox, ni ledger d'idempotence.** Aucun agrégat n'appelle `recordEvent()`.
+Trois classes, trois responsabilités qu'il ne faut pas fondre :
 
-Ne pas « activer » ce qui traîne :
+| Classe | Emplacement | Rôle |
+|---|---|---|
+| `MongoDomainEventBus` | `Symfony/Messenger/Event/` | implémente le Port, encode, pose le `BusNameStamp` |
+| `MongoOutboxTransport` | `Symfony/Messenger/Transport/` | traduit `OutboxRecord` ↔ `Envelope`, acquitte |
+| `DomainEventOutbox` | `Persistence/Mongo/Outbox/` | **seul à connaître Doctrine** : `persist()`, `claim()`, `remove()` |
 
-- les fichiers `docker/app/supervisor/conf.d/messenger-worker.conf` et la cible `make consume` sont
-  repris du monolithe. Ils visent un transport AMQP et un transport `domain_events` adossé à Doctrine,
-  dont aucun n'existe ici. Ils seront **réécrits**, pas rebranchés — ne pas les lire comme une spec ;
-- ne pas ajouter de transport `doctrine://`, de table relationnelle, de Redis partagé ni de broker :
-  le service doit continuer à démarrer seul ;
-- ne pas appeler `releaseEvents()` dans un handler tant qu'aucun adaptateur transactionnel ne les
-  persiste — cela viderait des événements sans les publier.
+Le découpage n'est pas cosmétique : il fait tenir la règle « aucune référence à Doctrine hors
+`Persistence/` ». Les deux classes `Symfony/` ne manipulent que des chaînes déjà sérialisées et des
+`OutboxRecord`.
 
-Ce que l'étape B doit construire, et pourquoi l'outbox du monolithe n'est pas reprenable (elle est
-relationnelle, nos données sont dans Mongo) : [`docs/domain_events.md`](../../docs/domain_events.md).
+**La règle** : `DomainEventOutbox::enqueue()` fait `persist()` et **ne flushe pas**, donc la ligne
+rejoint le flush unique de `MongoTransactional` et commite avec l'agrégat. Son pendant
+`enqueueAndFlush()` engage tout de suite, et n'est appelé que par le `send()` du transport. Toute écriture émise par le pilote à côté de ce
+flush — `insertOne()`, ou un `SenderInterface` qui écrit tout de suite — s'engagerait seule et
+survivrait au rollback, **sans lever d'erreur**.
 
-La règle qui survivra à l'implémentation : une écriture de catalogue et les événements qu'elle libère
-commitent ensemble ou pas du tout, et **aucune publication externe** (HTTP, e-mail, broker) ne doit
-avoir lieu dans le callback de `TransactionalInterface`.
+C'est la différence structurelle avec le monolithe, où `doctrine://` rejoint la transaction ouverte
+gratuitement parce qu'il emprunte la connexion DBAL courante. Ne pas transposer ce raisonnement ici.
+
+`enqueueAndFlush()` **flushe**, seule exception à la règle « seul `MongoTransactional` flushe ». Il ne sert qu'aux chemins de reprise, exécutés hors transaction métier : retry différé,
+copie vers `failed_domain_events`, `messenger:failed:retry`. Le chemin nominal ne l'emprunte pas.
+
+Le transport et son stamp sont **exclus de l'autowiring** (`config/services.yaml`) : leurs arguments
+scalaires viennent de la DSN, via `MongoOutboxTransportFactory`.
+
+Cycle complet, retry, idempotence : [`docs/domain_events.md`](../../docs/domain_events.md).
 
 ---
 
@@ -155,11 +177,19 @@ avoir lieu dans le callback de `TransactionalInterface`.
 `HandledStamp` et renvoient son résultat. Router un message CQRS vers un transport asynchrone
 casserait ce contrat, puisqu'il n'y aurait plus de résultat immédiat.
 
-Le cache de queries (`QueryCacheMiddleware`) et son pendant d'invalidation restent **absents**
-jusqu'à l'étape B : l'invalidation est pilotée par les Domain Events, et un cache sans invalidation
-renverrait des lectures périmées dès la première écriture. Les brancher séparément est une erreur.
+`QueryCacheMiddleware` (sur `query.bus`) et `CacheInvalidationMiddleware` (sur `command.bus`) sont
+actifs. Les brancher **séparément** est une erreur : le cache sans son invalidation servirait des
+lectures périmées dès la première écriture.
 
-Détail : [`docs/CQRS_messenger.md`](../../docs/CQRS_messenger.md).
+L'invalidation vit dans un middleware et non dans une réaction du worker, pour purger après le commit
+et **avant la réponse** : confiée au worker, elle arriverait après que le client a relu.
+
+Le pool `cache.tag` utilise le Redis dédié du service et `cache.adapter.redis_tag_aware` : les
+résultats et leurs invalidations sont communs aux replicas. Il ne contient que des données
+recomputables et ne doit jamais être mutualisé avec `service_identity`.
+
+Détail : [`docs/CQRS_messenger.md`](../../docs/CQRS_messenger.md) et
+[`docs/query_cache.md`](../../docs/query_cache.md).
 
 ---
 
@@ -199,7 +229,8 @@ Deux périmètres, jamais mélangés :
 
 - **`tests/Infrastructure/Unit/`** — `PHPUnit\Framework\TestCase` uniquement. Aucun `bootKernel()`,
   aucun accès conteneur, aucune base : l'adapter est instancié à la main avec des doubles.
-  Suites : `infra.symfony.command`, `infra.api-platform.encoder`, `infra.api-platform.serializer`.
+  Suites : `infra.symfony.command`, `infra.api-platform.encoder`, `infra.api-platform.serializer`,
+  `infra.messenger.event`, `infra.cache`.
 - **`tests/Infrastructure/Integration/`** — `KernelTestCase`, via `MongoPersistenceTestCase` : ce
   qu'on ne peut vérifier qu'avec un vrai MongoDB (mapping, index, transactions). Suite :
   `infra.persist`.
@@ -214,18 +245,22 @@ processus**. Mesure faite : `drop()` + `ensureIndexes()` coûte **155 ms** par t
 coûte **0,8** — c'était 90 % du temps de la suite.
 
 Les index doivent malgré tout exister : sans eux, les deux cas de rollback de `MongoTransactionalTest`
-ne provoqueraient plus aucun rejet et **passeraient au vert sans rien prouver**. C'est la raison pour
-laquelle `drop()` ne doit pas revenir « par sécurité ».
+et ceux de `DomainEventOutboxTest` ne provoqueraient plus aucun rejet et **passeraient au vert sans
+rien prouver**. C'est la raison pour laquelle `drop()` ne doit pas revenir « par sécurité ».
+
+`resetDatabase()` purge aussi `domain_event_outbox` : sans cela, les événements d'un test se
+compteraient dans le suivant.
 
 ---
 
 ## Checklist Infrastructure
 
 - [ ] Chaque Port Application a une implémentation, ou une absence assumée et documentée.
-- [ ] Aucun `flush()` hors `MongoTransactional`.
+- [ ] Aucun `flush()` hors `MongoTransactional` — sauf `MongoOutboxTransport::send()`, hors transaction.
+- [ ] Les Domain Events sont écrits par `persist()`, jamais par le pilote, dans le chemin nominal.
 - [ ] Le mapping Domain ↔ Document passe par un mapper dédié, avec `reconstitute()`.
 - [ ] Cascade, `level` et `nbProduct` maintenus explicitement — la base ne les gère pas.
 - [ ] Index déclarés dans le document, nommés explicitement, posés par `make db-index`.
 - [ ] Aucun code Infra ne dépend de `src/Presentation/`.
-- [ ] Aucune dépendance ajoutée à un broker, un cache distribué ou une base relationnelle.
+- [ ] Aucun broker ni base relationnelle ajoutés ; Redis reste dédié au cache applicatif partagé.
 - [ ] `declare(strict_types=1);` dans tout nouveau fichier PHP.

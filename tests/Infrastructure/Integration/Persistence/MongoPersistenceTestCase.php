@@ -68,13 +68,14 @@ abstract class MongoPersistenceTestCase extends KernelTestCase
         $this->resetDatabase();
     }
 
-    protected function aCategory(string $title): Category
+    protected function aCategory(string $title, ?CategoryId $parentId = null): Category
     {
         return Category::create(
             id: $this->categories->nextIdentity(),
             title: CategoryTitle::fromString($title),
             slug: Slug::fromString($this->slugify($title)),
             now: new DateTimeImmutable(),
+            parentId: $parentId,
         );
     }
 
@@ -121,7 +122,7 @@ abstract class MongoPersistenceTestCase extends KernelTestCase
             self::$indexesEnsured = true;
         }
 
-        foreach (['product', 'category'] as $collection) {
+        foreach (['product', 'category', 'domain_event_outbox'] as $collection) {
             $database->selectCollection($collection)->deleteMany([]);
         }
 

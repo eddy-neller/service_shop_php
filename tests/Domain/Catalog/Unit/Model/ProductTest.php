@@ -8,7 +8,6 @@ use App\Domain\Catalog\Model\Product;
 use App\Domain\Catalog\ValueObject\CategoryId;
 use App\Domain\Catalog\ValueObject\ProductDescription;
 use App\Domain\Catalog\ValueObject\ProductId;
-use App\Domain\Catalog\ValueObject\ProductImage;
 use App\Domain\Catalog\ValueObject\ProductSubtitle;
 use App\Domain\Catalog\ValueObject\ProductTitle;
 use App\Domain\SharedKernel\ValueObject\Money;
@@ -117,7 +116,7 @@ final class ProductTest extends TestCase
         $product = $this->createProduct();
         $now = new DateTimeImmutable('2025-01-02 10:00:00');
 
-        $product->updateImage(ProductImage::create('image.jpg'), $now);
+        $product->updateImage('image.jpg', $now);
 
         $this->assertSame('image.jpg', $product->getImageName());
         $this->assertSame($now, $product->getUpdatedAt());
@@ -137,8 +136,6 @@ final class ProductTest extends TestCase
     {
         $createdAt = new DateTimeImmutable('2024-12-01 10:00:00');
         $updatedAt = new DateTimeImmutable('2024-12-10 10:00:00');
-        $image = ProductImage::create('stored.jpg');
-
         $product = Product::reconstitute(
             id: ProductId::fromString(self::PRODUCT_ID),
             title: ProductTitle::fromString('Stored title'),
@@ -147,7 +144,7 @@ final class ProductTest extends TestCase
             price: Money::fromInt(4999),
             slug: Slug::fromString('stored-title'),
             categoryId: CategoryId::fromString(self::CATEGORY_ID),
-            image: $image,
+            imageName: 'stored.jpg',
             createdAt: $createdAt,
             updatedAt: $updatedAt,
         );

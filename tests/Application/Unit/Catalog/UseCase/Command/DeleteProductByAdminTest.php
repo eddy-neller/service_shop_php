@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Tests\Application\Unit\Catalog\UseCase\Command;
 
 use App\Application\Catalog\Port\CategoryRepositoryInterface;
+use App\Application\Catalog\Port\ProductImageStorageInterface;
 use App\Application\Catalog\Port\ProductRepositoryInterface;
 use App\Application\Catalog\UseCase\Command\DeleteProductByAdmin\DeleteProductByAdminCommand;
 use App\Application\Catalog\UseCase\Command\DeleteProductByAdmin\DeleteProductByAdminCommandHandler;
 use App\Application\Shared\Port\ClockInterface;
+use App\Application\Shared\Port\DomainEventBusInterface;
 use App\Application\Shared\Port\TransactionalInterface;
 use App\Domain\Catalog\Exception\CategoryNotFoundException;
 use App\Domain\Catalog\Exception\ProductNotFoundException;
@@ -36,9 +38,14 @@ final class DeleteProductByAdminTest extends TestCase
 
     private CategoryRepositoryInterface&MockObject $categoryRepository;
 
+    private ProductImageStorageInterface&MockObject $imageStorage;
+
     private ClockInterface&MockObject $clock;
 
     private TransactionalInterface&MockObject $transactional;
+
+    /** @var list<\App\Domain\SharedKernel\Event\DomainEventInterface> */
+    private array $publishedEvents = [];
 
     private DeleteProductByAdminCommandHandler $handler;
 
@@ -46,13 +53,21 @@ final class DeleteProductByAdminTest extends TestCase
     {
         $this->productRepository = $this->createMock(ProductRepositoryInterface::class);
         $this->categoryRepository = $this->createMock(CategoryRepositoryInterface::class);
+        $this->imageStorage = $this->createMock(ProductImageStorageInterface::class);
         $this->clock = $this->createMock(ClockInterface::class);
         $this->transactional = $this->createMock(TransactionalInterface::class);
+        $this->publishedEvents = [];
+        $eventBus = $this->createStub(DomainEventBusInterface::class);
+        $eventBus->method('publishAll')->willReturnCallback(function (array $events): void {
+            $this->publishedEvents = [...$this->publishedEvents, ...$events];
+        });
         $this->handler = new DeleteProductByAdminCommandHandler(
             $this->productRepository,
             $this->categoryRepository,
+            $this->imageStorage,
             $this->clock,
             $this->transactional,
+            $eventBus,
         );
     }
 
@@ -93,15 +108,45 @@ final class DeleteProductByAdminTest extends TestCase
             ->method('delete')
             ->with($product);
 
+        $this->imageStorage->expects($this->never())->method('remove');
+
         $this->transactional->expects($this->once())
             ->method('transactional')
-            ->willReturnCallback(function (callable $callback) {
-                $callback();
-            });
+            ->willReturnCallback(static fn (callable $callback) => $callback());
 
         $this->handler->handle($command);
 
         $this->assertSame($now, $product->getUpdatedAt());
+    }
+
+    public function testHandleRemovesTheProductImageAfterTheTransactionCommits(): void
+    {
+        $productId = ProductId::fromString(self::PRODUCT_ID);
+        $categoryId = CategoryId::fromString(self::CATEGORY_ID);
+        $product = $this->createProduct($productId, $categoryId, 'old-image.jpg');
+        $category = $this->createCategory($categoryId);
+        $category->increaseProductCount(new DateTimeImmutable());
+
+        $this->productRepository->expects($this->once())
+            ->method('findById')
+            ->with($productId)
+            ->willReturn($product);
+        $this->categoryRepository->expects($this->once())
+            ->method('findById')
+            ->with($categoryId)
+            ->willReturn($category);
+        $this->clock->expects($this->once())
+            ->method('now')
+            ->willReturn(new DateTimeImmutable());
+        $this->categoryRepository->expects($this->once())->method('save')->with($category);
+        $this->productRepository->expects($this->once())->method('delete')->with($product);
+        $this->expectTransactionalPassthrough();
+
+        $this->imageStorage->expects($this->once())
+            ->method('remove')
+            ->with('old-image.jpg');
+
+        $this->handler->handle(new DeleteProductByAdminCommand($productId->toString()));
     }
 
     public function testHandleThrowsWhenProductNotFound(): void
@@ -121,6 +166,8 @@ final class DeleteProductByAdminTest extends TestCase
             ->method('findById')
             ->with($productId)
             ->willReturn(null);
+
+        $this->imageStorage->expects($this->never())->method('remove');
 
         $this->expectException(ProductNotFoundException::class);
         $this->expectExceptionMessage('Product not found.');
@@ -149,6 +196,8 @@ final class DeleteProductByAdminTest extends TestCase
             ->with($categoryId)
             ->willReturn(null);
 
+        $this->imageStorage->expects($this->never())->method('remove');
+
         $this->expectException(CategoryNotFoundException::class);
         $this->expectExceptionMessage('Category not found.');
 
@@ -161,9 +210,9 @@ final class DeleteProductByAdminTest extends TestCase
         $this->handler->handle($command);
     }
 
-    private function createProduct(ProductId $productId, CategoryId $categoryId): Product
+    private function createProduct(ProductId $productId, CategoryId $categoryId, ?string $imageName = null): Product
     {
-        return Product::create(
+        $product = Product::create(
             id: $productId,
             title: ProductTitle::fromString('Product title'),
             subtitle: ProductSubtitle::fromString('Product subtitle'),
@@ -173,6 +222,14 @@ final class DeleteProductByAdminTest extends TestCase
             categoryId: $categoryId,
             now: new DateTimeImmutable('2024-01-01 09:00:00'),
         );
+
+        if (null !== $imageName) {
+            $product->updateImage($imageName, new DateTimeImmutable());
+        }
+
+        $product->clearDomainEvents();
+
+        return $product;
     }
 
     private function createCategory(CategoryId $categoryId): Category
@@ -183,5 +240,12 @@ final class DeleteProductByAdminTest extends TestCase
             slug: Slug::fromString('category-title'),
             now: new DateTimeImmutable('2024-01-01 09:00:00'),
         );
+    }
+
+    private function expectTransactionalPassthrough(): void
+    {
+        $this->transactional->expects($this->once())
+            ->method('transactional')
+            ->willReturnCallback(static fn (callable $callback) => $callback());
     }
 }

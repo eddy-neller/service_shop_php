@@ -2,7 +2,8 @@
 
 > Guide pour humains **et** agents. Service d'extraction du bounded context Shop
 > du monolithe `service_identity/`.
-> Jalon 1 : authentification. **Jalon 2, etape A : `Catalog` sur MongoDB.**
+> Jalon 1 : authentification. Jalon 2, etape A : `Catalog` sur MongoDB.
+> **Jalon 2, etape B : Domain Events, outbox MongoDB, worker, cache de queries.**
 
 ---
 
@@ -22,8 +23,10 @@ n'intervient a aucun moment — ne pas raisonner sur les deux piles a la fois.
   claims. Il possede desormais **ses propres donnees** : le catalogue, dans **sa** base MongoDB.
 - **N'est pas** : un emetteur. Il ne detient que la cle **publique**. Il est structurellement
   incapable de forger un token, et cette propriete doit etre preservee.
-- **N'a pas** : de broker, de cache distribue, ni le moindre acces a la base du monolithe. Aucune de
-  ces dependances ne doit etre ajoutee sans une raison metier explicite.
+- **N'a pas** : de broker ni le moindre acces a la base du monolithe. Aucune de ces dependances ne
+  doit etre ajoutee sans une raison metier explicite. L'outbox des Domain Events est une collection
+  de **sa** base ; le cache de queries vit dans un Redis **dedie** a ce service, partage entre ses
+  replicas et jamais mutualise avec `service_identity`.
 
 Le service demarre et repond **seul**, sans la stack du monolithe. C'est une propriete verifiee par
 `GET /health`, a preserver. Sa base lui appartient : `docker-compose.yaml` ne pointe vers aucune
@@ -67,8 +70,14 @@ Le catalogue est stocke dans **MongoDB**, via **Doctrine ODM**. Le monolithe uti
 Doctrine ORM : c'est un choix de persistance polyglotte assume, pas un alignement rate.
 
 Le domaine ne s'en apercoit pas, et c'est la propriete a preserver. `Domain/`, `Application/` et
-`Presentation/` ont ete repris **sans une ligne de modification**, avec leurs 155 tests a ports
-mockes (76 `domain.catalog` + 46 `appli.catalog` + 33 `pres.state.catalog`).
+`Presentation/` ont ete repris **sans une ligne de modification** a l'etape A, avec leurs 155 tests
+a ports mockes (76 `domain.catalog` + 46 `appli.catalog` + 33 `pres.state.catalog`).
+
+L'etape B a rouvert `Application/` — mais pas pour la persistance. Les sept command handlers ont
+gagne un argument `DomainEventBusInterface`, ce qui a impose de retoucher la suite `appli.catalog`
+(47 tests aujourd'hui). C'est un **Port applicatif de plus**, pas une fuite d'infrastructure : la
+regle « les suites a ports mockes passent sans modification » vise la persistance, et elle tient
+toujours pour `domain.catalog` et `pres.state.catalog`, restees intactes.
 Le seul endroit ou MongoDB est visible est `src/Infrastructure/Persistence/Mongo/`, plus les alias
 de `config/services.yaml`.
 
@@ -171,12 +180,74 @@ compilation du conteneur apres un `composer install --no-dev`.
 
 ### Ce que la base ne fait plus pour nous
 
-MongoDB n'a ni cle etrangere ni cascade. Cote monolithe, supprimer une categorie supprimait ses
-produits via `cascade: ['remove']` et `ON DELETE CASCADE` — deux filets poses par la base.
+MongoDB n'a ni cle etrangere ni cascade. Une categorie ne peut donc etre supprimee que si elle ne
+porte aucun produit et n'a aucun enfant : `Category::delete()` fait respecter cet invariant avant
+que le repository ne retire son seul document. Le `level` des categories etait maintenu par le
+nested set de Gedmo ; il est desormais calcule dans `save()`, et propage a la descendance quand une
+categorie change de parent.
 
-`MongoCategoryRepository::delete()` reproduit ce comportement **explicitement** : sous-arbre puis
-produits. De meme, le `level` des categories etait maintenu par le nested set de Gedmo ; il est
-desormais calcule dans `save()`, et propage a la descendance quand une categorie change de parent.
+---
+
+## Domain Events : un outbox qui doit rejoindre le flush
+
+> Cycle de vie complet — evenements, transport, worker, idempotence : [`docs/domain_events.md`](docs/domain_events.md).
+> Cache de lecture et invalidation : [`docs/query_cache.md`](docs/query_cache.md).
+
+Les douze evenements du catalogue sont enregistres par les agregats, publies par les command
+handlers **dans** le callback transactionnel, et consommes par un worker Messenger.
+
+```php
+$this->transactional->transactional(function () use ($product): void {
+    $this->productRepository->save($product);
+    $this->eventBus->publishAll($product->releaseEvents());   // meme flush
+});
+```
+
+### La regle qui ne doit jamais bouger
+
+`MongoDomainEventBus` **`persist()` un document**. Il ne dispatche pas, il n'insere pas par le
+pilote. C'est ce qui met la ligne d'outbox dans le flush unique de `MongoTransactional`, donc dans
+la transaction de l'agregat.
+
+La tentation de faire autrement est forte, parce que le monolithe fait autrement : sur Doctrine
+ORM, le transport `doctrine://` emet son INSERT sur la connexion courante et rejoint la transaction
+gratuitement. Ici, une ecriture emise a cote du flush n'a pas la session de la transaction : elle
+s'engage seule, survit au rollback, et **rien ne le signale**. Les evenements arriveraient dans la
+collection, le worker les consommerait, aucune erreur nulle part — seul un rollback publierait un
+`CategoryCreatedEvent` pour une categorie qui n'existe pas.
+
+`tests/Infrastructure/Integration/Persistence/DomainEventOutboxTest.php` est ce qui s'en apercoit :
+deux de ses cas ecrivent un agregat valide puis provoquent l'echec du flush, et verifient que
+l'outbox est vide. Remplacer le `persist()` par un `insertOne()` les fait passer au rouge, et rien
+d'autre dans la suite ne bronche.
+
+### Le transport est maison, et son `send()` n'est pas le chemin nominal
+
+`mongodb-outbox://<file>` (`MongoOutboxTransport`) lit la collection par `findOneAndUpdate`
+atomique, ce qui rend deux workers surs. Il implemente aussi `ListableReceiverInterface`, donc
+`messenger:failed:show` et `messenger:failed:retry` fonctionnent.
+
+Son `send()` **flushe** — ce qui serait une faute dans le chemin nominal. Il ne sert qu'aux chemins
+de reprise (retry differe, copie vers la file d'echec, rejeu manuel), qui s'executent tous hors
+transaction metier et exigent une ecriture durable immediatement.
+
+### Ce que le worker fait reellement
+
+Deux processus Supervisor consomment `domain_events`. Aujourd'hui, `LogDomainEventHandler`, type
+sur `DomainEventInterface`, journalise tout.
+
+Chaque image de produit a un nom aleatoire et appartient a un seul produit. Les handlers de commande
+suppriment l'ancienne image apres le commit MongoDB. Le systeme de fichiers reste ainsi hors
+transaction, sans worker ni comptage de references.
+
+### L'invalidation de cache ne passe pas par le worker
+
+Elle vit dans `CacheInvalidationMiddleware`, sur `command.bus`, et purge les tags **apres le commit
+et avant la reponse**. Confiee au worker, elle arriverait quelques dizaines de millisecondes trop
+tard : le client qui relit juste apres son ecriture ne verrait pas sa propre modification.
+
+Tout fait du catalogue purge les **deux** collections, parce que les read models se citent : un
+`ProductItem` porte le titre de sa categorie, un `CategoryItem` porte `nbProduct`.
 
 ---
 
@@ -199,10 +270,35 @@ desormais calcule dans `save()`, et propage a la descendance quand une categorie
 - **API Platform active son integration ODM des qu'il voit le bundle Doctrine MongoDB**, et exige
   alors `api-platform/doctrine-odm`. On la coupe (`doctrine_mongodb_odm: false`) : toutes les
   ressources passent par des State Providers ecrits a la main.
-- **Le cache des queries est desactive tant que les Domain Events n'existent pas.**
-  `QueryCacheMiddleware` n'a de sens qu'avec `CacheInvalidationMiddleware`, dont l'invalidation est
-  pilotee par les evenements. Les brancher seuls donnerait des lectures perimees des la premiere
-  ecriture. Les deux reviennent ensemble a l'etape B.
+- **L'outbox ne peut pas etre un transport Messenger ordinaire.** C'est le piege central de
+  l'etape B. Sur Doctrine ORM, `doctrine://` emet son INSERT sur la connexion courante et rejoint
+  donc la transaction ouverte sans que personne ait rien a faire. Une transaction MongoDB, elle,
+  appartient a la session portee par le flush de l'ODM : une ecriture emise par le pilote a cote de
+  ce flush s'engage seule et **survit au rollback de l'agregat**. `MongoDomainEventBus` fait donc
+  `persist()`, jamais `insertOne()`, et le `send()` du transport ne sert qu'aux chemins de reprise.
+  `DomainEventOutboxTest` est ce qui s'en apercevrait — remplacer le `persist()` par une ecriture
+  directe fait passer au rouge ses deux cas de rollback, et rien d'autre.
+- **Le cache des queries et son invalidation sont indissociables.** `QueryCacheMiddleware` seul
+  servirait des lectures perimees des la premiere ecriture. Les deux ont ete branches ensemble, et
+  ne doivent jamais etre desactives separement.
+- **`sync://` ne sert a rien pour les tests de cet outbox.** Le monolithe bascule son transport en
+  `sync://` sous `when@test` pour que les reactions s'executent en ligne. Ca n'aurait aucun effet
+  ici : `sync://` agit au `send()`, et le chemin nominal n'en emet pas. Les evenements iraient
+  quand meme dans la collection.
+- **Les evenements portent un `BusNameStamp('event.bus')`.** Le chemin nominal n'etant pas un
+  dispatch, personne ne le pose pour nous. Sans lui, le `RoutableMessageBus` du worker retombe sur
+  le bus par defaut — `command.bus`, qui n'a aucun handler d'evenement.
+- **Le conteneur compile de l'environnement `test` n'est pas invalide par un changement de source.**
+  `test` tourne en `debug=false` : Symfony ne surveille pas les fichiers, et un constructeur qui gagne
+  un argument produit un `ArgumentCountError` ou un `TypeError` a l'execution — jamais une erreur de
+  compilation. Le symptome est trompeur : des dizaines de tests d'API tombent en **500** avec des
+  messages qui accusent le code applicatif, alors que seul le cache est perime. Reflexe apres toute
+  modification de signature ou de `services.yaml` : `bin/console cache:clear --env=test`. C'est aussi
+  ce qui peut faire passer une suite au vert sur un conteneur qui ne correspond plus au code.
+- **`getPreferredLanguage()` rend `null` sans en-tete `Accept-Language`.** `kernel.enabled_locales`
+  est vide dans ce service ; Gedmo refuse alors la locale vide et `LocaleListener` faisait repondre
+  **500 a `GET /health`** — c'est-a-dire a tout appel `curl` et a toute sonde de supervision.
+  Le repli sur `app.default_locale` n'est pas cosmetique.
 
 - **`symfony/runtime` est obligatoire.** Sans lui, `FrameworkBundle::boot()` prend la branche
   `ErrorHandler::register(null, false)` et enregistre un gestionnaire d'exceptions global a chaque
@@ -233,6 +329,7 @@ make unit-filter f=...# une classe ou une methode
 make bash-app
 make bash-db          # shell mongosh
 make db-index         # (re)pose les index declares dans le mapping ODM
+make consume          # depile l'outbox a la main (Supervisor le fait deja en conteneur)
 make fixtures         # catalogue de dev : 30 categories, 1000 produits (PURGE la base)
 make jwt-public-key   # recopie la cle publique de l'emetteur
 make jwt-test-keys    # regenere la paire de test
@@ -252,14 +349,21 @@ jouee nulle part en CI — et l'oubli passerait pour un run vert.
 | `infra.symfony.command` | `tests/Infrastructure/Unit/Symfony/Command` | non |
 | `infra.api-platform.encoder` | `tests/Infrastructure/Unit/ApiPlatform/Encoder` | non |
 | `infra.api-platform.serializer` | `tests/Infrastructure/Unit/ApiPlatform/Serializer` | non |
+| `infra.adapter.catalog` | `tests/Infrastructure/Unit/Adapter/Catalog` | non |
+| `infra.cache` | `tests/Infrastructure/Unit/Cache` | non |
 | `infra.persist` | `tests/Infrastructure/Integration/Persistence` | **oui** |
 | `api.catalog.category` | `tests/Presentation/Api/Catalog/CategoryTest.php` | **oui** |
 | `api.catalog.product` | `tests/Presentation/Api/Catalog/ProductTest.php` | **oui** |
 
-Les suites a ports mockes sont reprises **telles quelles** du monolithe. Si l'une d'elles doit etre
-retouchee pour passer au vert, c'est que la persistance a fuite hors d'`Infrastructure/`. Les trois
-dernieres ecrivent dans `service_shop_test` : ce sont elles qui attrapent les regressions de mapping,
-d'index et de transaction, et elles exigent la stack `make up` avec son replica set.
+`domain.catalog` et `pres.state.catalog` sont reprises **telles quelles** du monolithe : si l'une
+d'elles doit etre retouchee pour passer au vert, c'est que la persistance a fuite hors
+d'`Infrastructure/`. `appli.catalog` a ete retouchee une fois, a l'etape B, pour un Port de plus
+(`DomainEventBusInterface`) — pas pour une fuite ; voir la section « Persistance ».
+
+Les trois dernieres ecrivent dans `service_shop_test` : ce sont elles qui attrapent les regressions
+de mapping, d'index et de transaction, et elles exigent la stack `make up` avec son replica set.
+`infra.persist` porte les deux gardes qui ne se voient nulle part ailleurs — atomicite du flush
+(`MongoTransactionalTest`) et atomicite de l'outbox (`DomainEventOutboxTest`).
 
 ---
 
@@ -286,21 +390,27 @@ CATID=$(echo "$CAT" | python3 -c "import sys,json; print(json.load(sys.stdin)['i
 
 curl -X POST localhost:20910/api/shop/products -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d "{\"title\":\"Stratocaster\",\"subtitle\":\"Corps aulne\",\"description\":\"Six cordes\",\"price\":1299.90,\"category\":\"/shop/categories/$CATID\"}"   # 201
+  -d "{\"title\":\"Stratocaster\",\"subtitle\":\"Corps aulne\",\"description\":\"Six cordes\",\"price\":1299.90,\"category\":\"/api/shop/categories/$CATID\"}"   # 201
 
 curl localhost:20910/api/shop/categories/$CATID   # nbProduct = 1 : les deux agregats ont commite ensemble
 curl -X DELETE localhost:20910/api/shop/categories/$CATID -H "Authorization: Bearer $TOKEN"  # 204, produit supprime avec
+
+# 4. Les Domain Events ont suivi le meme commit, et le worker les a depiles
+docker compose exec app bin/console messenger:stats          # domain_events = 0, failed = 0
+docker compose exec app sh -c 'grep "Domain event handled" var/log/dev.log | tail -5'
+# shop.catalog.category.created / product.created / category.deleted / product.deleted
+
+# 5. Le cache de queries est servi puis invalide par l'ecriture
+reads() { docker compose exec -T app sh -c 'grep -c "MongoDB command: {\"find\":\"category\"" var/log/dev.log'; }
+A=$(reads); curl -s -o /dev/null 'localhost:20910/api/shop/categories?page=1&itemsPerPage=3'
+B=$(reads); curl -s -o /dev/null 'localhost:20910/api/shop/categories?page=1&itemsPerPage=3'
+C=$(reads); echo "miss=$((B-A)) hit=$((C-B))"   # miss > 0, hit = 0
 ```
 
 ---
 
 ## Prochains jalons
 
-- **Jalon 2, etape B** — Domain Events du catalogue + archi Messenger complete. L'outbox de
-  `service_identity` est un transport `doctrine://`, donc relationnel : il doit etre **reecrit sur
-  MongoDB** (collection d'evenements ecrite dans le meme flush transactionnel que l'agregat, plus un
-  transport Messenger maison). Le ledger d'idempotence suit la meme regle — il vit dans le store qui
-  detient la donnee, sinon il ne garantit rien.
 - **Jalon 3** — `Customer` / `Cart` / `Ordering` : propriete des donnees, `UserAccountId` sans cle
   etrangere, saga de provisionnement (aujourd'hui `ProvisionCustomerHandler` cote monolithe).
 - **Retrait** — `Catalog` est encore present dans `service_identity`. Les deux implementations
@@ -311,11 +421,16 @@ curl -X DELETE localhost:20910/api/shop/categories/$CATID -H "Authorization: Bea
 ## Checklist
 
 - [ ] Aucune cle privee dans le depot (`ls config/jwt/private.pem` doit echouer).
-- [ ] Aucun acces a la base du monolithe, aucun broker ni cache distribue sans justification metier.
+- [ ] Aucun acces a la base du monolithe ni broker sans justification metier ; Redis reste dedie au
+      cache applicatif partage entre les replicas de ce service.
 - [ ] `GET /health` repond sans que la stack du monolithe tourne.
 - [ ] `make unit` vert, sans test *risky*.
 - [ ] Aucune reference a Doctrine hors `src/Infrastructure/Persistence/` (`grep -rn Doctrine src/`).
-- [ ] Aucun `flush()` dans un repository — seul `MongoTransactional` flushe.
+- [ ] Aucun `flush()` dans un repository — seul `MongoTransactional` flushe. Le transport de
+      l'outbox est la seule exception, et seulement dans son `send()`, hors transaction metier.
+- [ ] Les Domain Events sont publies **dans** le callback transactionnel, apres le `save()`.
+- [ ] `MongoDomainEventBus` `persist()` — jamais d'ecriture par le pilote dans le chemin nominal.
+- [ ] Le cache des queries et son invalidation sont actifs tous les deux, ou aucun des deux.
 - [ ] Les suites a ports mockes passent **sans modification** (cf. tableau des suites).
 - [ ] Toute suite declaree dans un `phpunit.xml` local existe aussi dans `phpunit.dist.xml`.
 - [ ] `declare(strict_types=1);` dans tout nouveau fichier PHP.

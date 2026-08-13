@@ -23,6 +23,20 @@ Un Port représente une dépendance externe ou technique que l'Application doit 
 - `ClockInterface` (temps `now()`), `ConfigInterface` (config), `TransactionalInterface` (exécution atomique),
 - `FileInterface` (fichier — pas d'`UploadedFile` Symfony), `DomainEventBusInterface` (publication des Domain Events).
 
+**Ports du catalogue** (`Application/Catalog/Port/`) : `CategoryRepositoryInterface`,
+`ProductRepositoryInterface`, `ProductImageUrlResolverInterface`, `ProductImageStorageInterface`,
+`ProductImageValidatorInterface`.
+
+> `ProductImageStorageInterface` est né d'une correction : le dépôt du fichier vivait dans
+> `MongoProductRepository::updateImage()`. Un repository qui écrit sur le disque, et un agrégat dont
+> l'image changeait sans qu'il le sache — donc sans qu'il puisse enregistrer l'événement. Le use case
+> stocke désormais lui-même, puis appelle `Product::updateImage()`. Les noms étant aléatoires et
+> propres à un produit, il supprime l'ancienne image après le commit.
+
+> `ProductImageValidatorInterface` vérifie le contenu réel de l'upload avant tout stockage ou
+> transaction. Les limites configurables et l'inspection de l'image restent dans son adapter
+> Infrastructure ; le handler ne dépend que du Port.
+
 > **Règle** : toute dépendance externe (DB, HTTP client, FS, queue…) → un Port dans `src/Application/.../Port`, implémenté dans `src/Infrastructure/...` (cf. `src/Infrastructure/AGENTS.md`). Les services applicatifs purs internes restent des classes concrètes injectées directement.
 
 ---
@@ -49,7 +63,8 @@ Un Port représente une dépendance externe ou technique que l'Application doit 
 - Mantra : **« toujours via le Bus, jamais via le Handler »**.
 - **Aucun mapping manuel** Command → Handler : enregistrement automatique par Messenger et convention obligatoire.
   - `FooCommand` → `FooCommandHandler`, `BarQuery` → `BarQueryHandler`.
-  - Les handlers implémentent leur interface marqueur et exposent `handle()` ; le wiring Infrastructure les limite à `command.bus` ou `query.bus`. La convention est vérifiée par `HandlerConventionTest`. Voir `docs/CQRS_messenger.md`.
+  - Les handlers implémentent leur interface marqueur et exposent `handle()` ; le wiring Infrastructure les limite à `command.bus` ou `query.bus`. Voir `docs/CQRS_messenger.md`. (`HandlerConventionTest` et la suite `appli.shared` existent côté
+monolithe, **pas ici** : la convention n'est vérifiée par aucun test dans ce dépôt.)
 
 ### Middlewares CQRS
 
@@ -76,12 +91,17 @@ Les commandes d'écriture utilisent `TransactionalInterface`, avec des transacti
 Les Domain Events enregistrés par un agrégat sont publiés par le handler via `DomainEventBusInterface`,
 **à l'intérieur** du callback `TransactionalInterface::transactional()`, juste après le `save()` (ou le
 `delete()`) de l'agrégat. Le handler appelle `releaseEvents()` et transmet le résultat au bus, qui écrit
-dans l'outbox sur la connexion transactionnelle courante : l'agrégat et ses événements sont donc commités
+dans l'outbox **en rejoignant le flush courant** : l'agrégat et ses événements sont donc commités
 ensemble, ou pas du tout. Publier après le commit rouvrirait la fenêtre où l'écriture métier est visible
 alors que ses réactions sont définitivement perdues.
 
+> Attention en relisant du code du monolithe : là-bas, le bus dispatche sur `event.bus` et le transport
+> `doctrine://` émet son INSERT sur la connexion transactionnelle courante. Ici, l'adapter `persist()` un
+> document dans le `DocumentManager` — une transaction MongoDB appartient à la session portée par le
+> flush de l'ODM, et une écriture émise à côté survivrait au rollback sans lever d'erreur.
+
 Corollaire : la publication ne doit **jamais** déclencher d'I/O externe (HTTP, e-mail, cache distant) — le
-bus se contente d'un INSERT local, les réactions sont exécutées plus tard par le worker `domain_events`.
+bus se contente d'une écriture locale, les réactions sont exécutées plus tard par le worker `domain_events`.
 
 > Cycle de vie complet des événements (outbox, worker, idempotence) : [`docs/domain_events.md`](../docs/domain_events.md).
 
@@ -127,7 +147,7 @@ Calculs de montants/totaux, conversions d'unités monétaires (euros↔cents), a
 
 - Chaque handler dépend d'interfaces (Ports) → testable avec des mocks (`UserRepositoryInterface`, `ClockInterface`, …), sans kernel.
 - **Aucun** attribut/annotation framework dans Application (`#[AsMessageHandler]`, `#[AutowireIterator]`, …) → wiring uniquement dans Infrastructure.
-- **Test obligatoire par use case** : chaque `*Command`/`*Query` doit avoir sa classe `*Test` (ex. `AddToCartCommand` → `AddToCartTest`), dans `tests/Application/Unit/<Contexte>/UseCase/Command|Query[/<sous-domaine>]/`. Vérifié **automatiquement** par `HandlerConventionTest` (suite `appli.shared`) : un handler livré sans test fait échouer GrumPHP (pre-commit) et la CI — ce n'est pas qu'une recommandation.
+- **Test obligatoire par use case** : chaque `*Command`/`*Query` doit avoir sa classe `*Test` (ex. `AddToCartCommand` → `AddToCartTest`), dans `tests/Application/Unit/<Contexte>/UseCase/Command|Query[/<sous-domaine>]/`. **Convention non outillée dans ce dépôt** : `HandlerConventionTest` (suite `appli.shared`) n'a pas été reprise du monolithe, donc un handler livré sans test passe la CI. À vérifier à la relecture, ou à porter.
 - Suites : `appli.catalog` (cf. `AGENTS.md` racine).
 
 ### Conventions de tests unitaires
@@ -175,5 +195,5 @@ $this->transactional->expects($this->once())
 - [ ] **Aucune logique métier** : calculs de montants/totaux, conversions d'unités, arithmétique prix/quantités et décisions métier délégués au Domain (VOs/agrégats).
 - [ ] Aucun attribut framework dans Application.
 - [ ] Les tests mockent les Ports et tournent sans kernel.
-- [ ] Chaque use case a une classe `*Test` (ex. `AddToCartCommand` → `AddToCartTest`), dans `tests/Application/Unit/<Contexte>/UseCase/Command|Query[/<sous-domaine>]/`. **Vérifié automatiquement** par `HandlerConventionTest` (suite `appli.shared`) : un handler sans test fait échouer GrumPHP et la CI.
+- [ ] Chaque use case a une classe `*Test` (ex. `AddToCartCommand` → `AddToCartTest`), dans `tests/Application/Unit/<Contexte>/UseCase/Command|Query[/<sous-domaine>]/`. Rien ne le vérifie ici — `HandlerConventionTest` n'a pas été reprise.
 - [ ] Les tests couvrent le chemin nominal, les erreurs attendues, les interactions positives/négatives avec les Ports et les métadonnées de cache des queries concernées.

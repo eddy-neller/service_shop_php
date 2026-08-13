@@ -8,6 +8,7 @@ use App\Application\Catalog\Port\CategoryRepositoryInterface;
 use App\Application\Catalog\UseCase\Command\UpdateCategoryByAdmin\UpdateCategoryByAdminCommand;
 use App\Application\Catalog\UseCase\Command\UpdateCategoryByAdmin\UpdateCategoryByAdminCommandHandler;
 use App\Application\Shared\Port\ClockInterface;
+use App\Application\Shared\Port\DomainEventBusInterface;
 use App\Application\Shared\Port\SlugGeneratorInterface;
 use App\Application\Shared\Port\TransactionalInterface;
 use App\Domain\Catalog\Exception\CatalogDomainException;
@@ -36,6 +37,9 @@ final class UpdateCategoryByAdminTest extends TestCase
 
     private SlugGeneratorInterface&MockObject $slugGenerator;
 
+    /** @var list<\App\Domain\SharedKernel\Event\DomainEventInterface> */
+    private array $publishedEvents = [];
+
     private UpdateCategoryByAdminCommandHandler $handler;
 
     protected function setUp(): void
@@ -44,11 +48,17 @@ final class UpdateCategoryByAdminTest extends TestCase
         $this->clock = $this->createMock(ClockInterface::class);
         $this->transactional = $this->createMock(TransactionalInterface::class);
         $this->slugGenerator = $this->createMock(SlugGeneratorInterface::class);
+        $this->publishedEvents = [];
+        $eventBus = $this->createStub(DomainEventBusInterface::class);
+        $eventBus->method('publishAll')->willReturnCallback(function (array $events): void {
+            $this->publishedEvents = [...$this->publishedEvents, ...$events];
+        });
         $this->handler = new UpdateCategoryByAdminCommandHandler(
             $this->repository,
             $this->clock,
             $this->transactional,
             $this->slugGenerator,
+            $eventBus,
         );
     }
 

@@ -39,11 +39,17 @@
         <testsuite name="infra.symfony.command">
             <directory>tests/Infrastructure/Unit/Symfony/Command</directory>
         </testsuite>
+        <testsuite name="infra.symfony.messenger">
+            <directory>tests/Infrastructure/Unit/Symfony/Messenger</directory>
+        </testsuite>
         <testsuite name="infra.api-platform.encoder">
             <directory>tests/Infrastructure/Unit/ApiPlatform/Encoder</directory>
         </testsuite>
         <testsuite name="infra.api-platform.serializer">
             <directory>tests/Infrastructure/Unit/ApiPlatform/Serializer</directory>
+        </testsuite>
+        <testsuite name="infra.adapter.catalog">
+            <directory>tests/Infrastructure/Unit/Adapter/Catalog</directory>
         </testsuite>
 
         <!-- Suites touchant un vrai MongoDB (base `service_shop_test`, cf. .env.test).

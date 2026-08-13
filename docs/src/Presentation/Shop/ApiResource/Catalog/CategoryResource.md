@@ -80,7 +80,7 @@ Les processors ne manipulent pas les documents MongoDB. Ils extraient l'identifi
 
 La semantique actuelle du `PATCH` est additive : une valeur `null` est indistinguable d'un champ omis pour le cas d'usage. Il est donc possible d'ajouter ou de changer un parent, mais pas de remettre explicitement `description` ou `parent` a `null` via cette operation.
 
-`DELETE` declare `output: false`, ne deserialize aucun modele (`read: false`) et renvoie `204`. La suppression du sous-arbre et des produits rattaches est une responsabilite du repository Mongo appele par le cas d'usage, execute dans sa transaction ; elle ne doit pas etre deplacee dans cette ressource.
+`DELETE` declare `output: false`, ne deserialize aucun modele (`read: false`) et renvoie `204` pour une categorie vide et sans enfant. Sinon, l'agregat refuse l'operation avec un conflit `409` ; aucune suppression en cascade n'est effectuee.
 
 ## Points de vigilance lors d'une modification
 

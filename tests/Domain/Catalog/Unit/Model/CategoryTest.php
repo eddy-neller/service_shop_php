@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Domain\Catalog\Unit\Model;
 
+use App\Domain\Catalog\Exception\CategoryNotEmptyException;
 use App\Domain\Catalog\Model\Category;
 use App\Domain\Catalog\ValueObject\CategoryDescription;
 use App\Domain\Catalog\ValueObject\CategoryId;
@@ -164,6 +165,26 @@ final class CategoryTest extends TestCase
         $this->assertSame($now, $category->getUpdatedAt());
     }
 
+    public function testDeleteThrowsWhenTheCategoryContainsProducts(): void
+    {
+        $category = $this->reconstituteCategory(productCount: 1);
+
+        $this->expectException(CategoryNotEmptyException::class);
+        $this->expectExceptionMessage('Category must have no products or children before deletion.');
+
+        $category->delete(new DateTimeImmutable('2025-01-02 10:00:00'));
+    }
+
+    public function testDeleteThrowsWhenTheCategoryHasChildren(): void
+    {
+        $category = $this->reconstituteCategory(hasChildren: true);
+
+        $this->expectException(CategoryNotEmptyException::class);
+        $this->expectExceptionMessage('Category must have no products or children before deletion.');
+
+        $category->delete(new DateTimeImmutable('2025-01-02 10:00:00'));
+    }
+
     public function testReconstituteRestoresState(): void
     {
         $createdAt = new DateTimeImmutable('2024-12-01 10:00:00');
@@ -253,6 +274,19 @@ final class CategoryTest extends TestCase
             slug: Slug::fromString('my-category'),
             now: new DateTimeImmutable('2025-01-01 10:00:00'),
             parentId: CategoryId::fromString(self::PARENT_ID),
+        );
+    }
+
+    private function reconstituteCategory(int $productCount = 0, bool $hasChildren = false): Category
+    {
+        return Category::reconstitute(
+            id: CategoryId::fromString(self::CATEGORY_ID),
+            title: CategoryTitle::fromString('Stored category'),
+            slug: Slug::fromString('stored-category'),
+            createdAt: new DateTimeImmutable('2024-12-01 10:00:00'),
+            updatedAt: new DateTimeImmutable('2024-12-10 10:00:00'),
+            productCount: $productCount,
+            hasChildren: $hasChildren,
         );
     }
 }

@@ -5,13 +5,11 @@ declare(strict_types=1);
 namespace App\Infrastructure\Persistence\Mongo\Catalog;
 
 use App\Application\Catalog\Port\ProductRepositoryInterface;
-use App\Application\Shared\Port\FileInterface;
 use App\Domain\Catalog\Model\Category as DomainCategory;
 use App\Domain\Catalog\Model\Product as DomainProduct;
 use App\Domain\Catalog\ValueObject\CategoryId;
 use App\Domain\Catalog\ValueObject\ProductId;
 use App\Domain\Catalog\ValueObject\ProductTitle;
-use App\Infrastructure\Adapter\Catalog\ProductImageStorage;
 use App\Infrastructure\Adapter\Uuid\UuidGeneratorInterface;
 use Doctrine\ODM\MongoDB\DocumentManager;
 use Doctrine\ODM\MongoDB\Query\Builder;
@@ -25,7 +23,6 @@ final readonly class MongoProductRepository implements ProductRepositoryInterfac
         private UuidGeneratorInterface $uuidGenerator,
         private ProductMapper $mapper,
         private CategoryMapper $categoryMapper,
-        private ProductImageStorage $imageStorage,
     ) {
     }
 
@@ -34,9 +31,6 @@ final readonly class MongoProductRepository implements ProductRepositoryInterfac
         return ProductId::fromString($this->uuidGenerator->generate());
     }
 
-    /**
-     * @return array{items: list<array{product: DomainProduct, category: DomainCategory}>, totalItems: int, totalPages: int}
-     */
     public function list(array $filters, array $orderBy, int $page, int $itemsPerPage): array
     {
         $totalItems = $this->applyFilters($this->createQueryBuilder(), $filters)
@@ -69,8 +63,8 @@ final readonly class MongoProductRepository implements ProductRepositoryInterfac
         foreach ($documents as $document) {
             $category = $categories[$document->categoryId] ?? null;
             if (null === $category) {
-                // Produit orphelin : sa categorie a disparu sans que la cascade passe.
-                // Il n'est pas listable — la ressource API expose une categorie non nullable.
+                // Garde defensive pour une donnee legacy incoherente : la ressource API expose
+                // une categorie non nullable, et l'invariant de suppression l'empeche en ecriture.
                 continue;
             }
 
@@ -115,6 +109,28 @@ final readonly class MongoProductRepository implements ProductRepositoryInterfac
         return null === $document ? null : $this->mapper->toDomain($document);
     }
 
+    /**
+     * @return array{product: DomainProduct, category: ?DomainCategory}|null
+     */
+    public function findWithCategoryById(ProductId $id): ?array
+    {
+        $document = $this->findDocument($id);
+        if (null === $document) {
+            return null;
+        }
+
+        $categoryDocument = $this->documentManager->find(CategoryDocument::class, $document->categoryId);
+
+        return [
+            'product' => $this->mapper->toDomain($document),
+            // La vue produit n'expose pas `category.hasChildren` : un `count()` sur
+            // les enfants de cette categorie serait donc une lecture sans effet.
+            'category' => $categoryDocument instanceof CategoryDocument
+                ? $this->categoryMapper->toDomain($categoryDocument, hasChildren: false)
+                : null,
+        ];
+    }
+
     public function findByTitle(ProductTitle $title): ?DomainProduct
     {
         $document = $this->documentManager
@@ -122,61 +138,6 @@ final readonly class MongoProductRepository implements ProductRepositoryInterfac
             ->findOneBy(['title' => $title->toString()]);
 
         return $document instanceof ProductDocument ? $this->mapper->toDomain($document) : null;
-    }
-
-    /**
-     * @param ProductId[] $ids
-     *
-     * @return DomainProduct[]
-     */
-    public function findByIds(array $ids): array
-    {
-        if ([] === $ids) {
-            return [];
-        }
-
-        $documents = $this->documentManager
-            ->getRepository(ProductDocument::class)
-            ->findBy([
-                'id' => ['$in' => array_map(
-                    static fn (ProductId $id): string => $id->toString(),
-                    $ids,
-                )],
-            ]);
-
-        $products = [];
-        foreach ($documents as $document) {
-            if ($document instanceof ProductDocument) {
-                $products[] = $this->mapper->toDomain($document);
-            }
-        }
-
-        return $products;
-    }
-
-    /**
-     * Remplace ce que faisait VichUploader sur le flush Doctrine : le deplacement du
-     * fichier est explicite, et le nom stocke reste la seule information persistee.
-     *
-     * L'ancien fichier n'est **pas** supprime, contrairement au `delete_on_update` de
-     * Vich. Le supprimer ici le detruirait avant le commit, donc pour rien si la
-     * transaction avorte ; le supprimer apres suppose un point d'accroche post-commit
-     * que ce service n'a pas encore. C'est le travail d'un handler de
-     * `ProductImageUpdatedEvent`, a l'etape B. En attendant, on prefere un fichier
-     * orphelin sur le disque a une image perdue.
-     */
-    public function updateImage(ProductId $id, FileInterface $file): ?DomainProduct
-    {
-        $document = $this->findDocument($id);
-        if (null === $document) {
-            return null;
-        }
-
-        $document->imageName = $this->imageStorage->store($file);
-
-        $this->documentManager->persist($document);
-
-        return $this->mapper->toDomain($document);
     }
 
     /**

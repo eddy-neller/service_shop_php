@@ -8,7 +8,6 @@ use App\Domain\Catalog\Model\Product as DomainProduct;
 use App\Domain\Catalog\ValueObject\CategoryId;
 use App\Domain\Catalog\ValueObject\ProductDescription;
 use App\Domain\Catalog\ValueObject\ProductId;
-use App\Domain\Catalog\ValueObject\ProductImage;
 use App\Domain\Catalog\ValueObject\ProductSubtitle;
 use App\Domain\Catalog\ValueObject\ProductTitle;
 use App\Domain\SharedKernel\ValueObject\Money;
@@ -26,7 +25,7 @@ final readonly class ProductMapper
             price: Money::fromInt($document->priceAmount, $document->priceCurrency),
             slug: Slug::fromString($document->slug),
             categoryId: CategoryId::fromString($document->categoryId),
-            image: ProductImage::create(fileName: $document->imageName),
+            imageName: $document->imageName,
             createdAt: $document->createdAt,
             updatedAt: $document->updatedAt,
         );
@@ -46,7 +45,7 @@ final readonly class ProductMapper
         $document->priceCurrency = $product->getPrice()->currency();
         $document->slug = $product->getSlug()->toString();
         $document->categoryId = $product->getCategoryId()->toString();
-        $document->imageName = $product->getImage()->fileName();
+        $document->imageName = $product->getImageName();
         $document->createdAt = $product->getCreatedAt();
         $document->updatedAt = $product->getUpdatedAt();
 

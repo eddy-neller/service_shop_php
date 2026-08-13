@@ -9,6 +9,7 @@ use App\Application\Catalog\Port\ProductRepositoryInterface;
 use App\Application\Catalog\ReadModel\Catalog\ProductItem;
 use App\Application\Shared\CQRS\Command\CommandHandlerInterface;
 use App\Application\Shared\Port\ClockInterface;
+use App\Application\Shared\Port\DomainEventBusInterface;
 use App\Application\Shared\Port\SlugGeneratorInterface;
 use App\Application\Shared\Port\TransactionalInterface;
 use App\Domain\Catalog\Exception\CategoryNotFoundException;
@@ -32,6 +33,7 @@ final readonly class UpdateProductByAdminCommandHandler implements CommandHandle
         private ClockInterface $clock,
         private TransactionalInterface $transactional,
         private SlugGeneratorInterface $slugGenerator,
+        private DomainEventBusInterface $eventBus,
     ) {
     }
 
@@ -69,6 +71,7 @@ final readonly class UpdateProductByAdminCommandHandler implements CommandHandle
             $this->applyCategoryChange($categoryId, $product, $now);
 
             $this->productRepository->save($product);
+            $this->eventBus->publishAll($product->releaseEvents());
 
             $category = $this->categoryRepository->findById($product->getCategoryId());
             if (null === $category) {

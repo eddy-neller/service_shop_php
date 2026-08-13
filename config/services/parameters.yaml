@@ -6,6 +6,11 @@ parameters:
     app.default_locale: "%kernel.default_locale%"
     app_title: "%env(resolve:APP_TITLE)%"
     mailer_to: "%env(resolve:MAILER_TO)%"
+    app.product_image.max_size: '%env(int:PRODUCT_IMAGE_MAX_SIZE)%'
+    app.product_image.min_dimension: '%env(int:PRODUCT_IMAGE_MIN_DIMENSION)%'
+    app.product_image.max_dimension: '%env(int:PRODUCT_IMAGE_MAX_DIMENSION)%'
+    app.product_image.upload_directory: '%kernel.project_dir%/public%app.path.images%/catalog/product'
+    app.product_image.upload_url: '%app.path.images%/catalog/product'
 
     ###> symfony/mailer ###
     mailer_dsn: "%env(resolve:MAILER_DSN)%"

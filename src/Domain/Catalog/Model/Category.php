@@ -4,15 +4,24 @@ declare(strict_types=1);
 
 namespace App\Domain\Catalog\Model;
 
+use App\Domain\Catalog\Event\Category\CategoryCreatedEvent;
+use App\Domain\Catalog\Event\Category\CategoryDeletedEvent;
+use App\Domain\Catalog\Event\Category\CategoryDescriptionUpdatedEvent;
+use App\Domain\Catalog\Event\Category\CategoryMovedEvent;
+use App\Domain\Catalog\Event\Category\CategoryRenamedEvent;
+use App\Domain\Catalog\Exception\CategoryNotEmptyException;
 use App\Domain\Catalog\ValueObject\CategoryDescription;
 use App\Domain\Catalog\ValueObject\CategoryId;
 use App\Domain\Catalog\ValueObject\CategoryTitle;
+use App\Domain\SharedKernel\Event\DomainEventTrait;
 use App\Domain\SharedKernel\ValueObject\Slug;
 use DateTimeImmutable;
 use InvalidArgumentException;
 
 final class Category
 {
+    use DomainEventTrait;
+
     private function __construct(
         private CategoryId $id,
         private CategoryTitle $title,
@@ -35,7 +44,7 @@ final class Category
         ?CategoryId $parentId = null,
         ?CategoryDescription $description = null,
     ): self {
-        return new self(
+        $category = new self(
             id: $id,
             title: $title,
             description: $description,
@@ -47,6 +56,10 @@ final class Category
             createdAt: $now,
             updatedAt: $now,
         );
+
+        $category->recordEvent(new CategoryCreatedEvent($id, $now));
+
+        return $category;
     }
 
     public static function reconstitute(
@@ -83,7 +96,13 @@ final class Category
 
     public function delete(DateTimeImmutable $now): void
     {
+        if ($this->productCount > 0 || $this->hasChildren) {
+            throw new CategoryNotEmptyException();
+        }
+
         $this->touch($now);
+
+        $this->recordEvent(new CategoryDeletedEvent($this->id, $now));
     }
 
     public function rename(CategoryTitle $title, Slug $slug, DateTimeImmutable $now): void
@@ -91,18 +110,24 @@ final class Category
         $this->title = $title;
         $this->slug = $slug;
         $this->touch($now);
+
+        $this->recordEvent(new CategoryRenamedEvent($this->id, $now));
     }
 
     public function describe(?CategoryDescription $description, DateTimeImmutable $now): void
     {
         $this->description = $description;
         $this->touch($now);
+
+        $this->recordEvent(new CategoryDescriptionUpdatedEvent($this->id, $now));
     }
 
     public function moveTo(?CategoryId $parentId, DateTimeImmutable $now): void
     {
         $this->parentId = $parentId;
         $this->touch($now);
+
+        $this->recordEvent(new CategoryMovedEvent($this->id, $parentId, $now));
     }
 
     public function increaseProductCount(DateTimeImmutable $now): void

@@ -8,3 +8,7 @@ services:
     ports:
       - "${MONGODB_EXPOSED_PORT:-20912}:27017"
 ###< doctrine/mongodb-odm-bundle ###
+
+  redis:
+    ports:
+      - "${REDIS_EXPOSED_PORT:-20913}:6379"

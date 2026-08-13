@@ -9,6 +9,7 @@ use App\Application\Catalog\Port\ProductRepositoryInterface;
 use App\Application\Catalog\ReadModel\Catalog\ProductItem;
 use App\Application\Shared\CQRS\Command\CommandHandlerInterface;
 use App\Application\Shared\Port\ClockInterface;
+use App\Application\Shared\Port\DomainEventBusInterface;
 use App\Application\Shared\Port\SlugGeneratorInterface;
 use App\Application\Shared\Port\TransactionalInterface;
 use App\Domain\Catalog\Exception\CategoryNotFoundException;
@@ -28,6 +29,7 @@ final readonly class CreateProductByAdminCommandHandler implements CommandHandle
         private ClockInterface $clock,
         private TransactionalInterface $transactional,
         private SlugGeneratorInterface $slugGenerator,
+        private DomainEventBusInterface $eventBus,
     ) {
     }
 
@@ -68,6 +70,8 @@ final readonly class CreateProductByAdminCommandHandler implements CommandHandle
 
             $category->increaseProductCount($now);
             $this->categoryRepository->save($category);
+
+            $this->eventBus->publishAll($product->releaseEvents());
 
             return ProductItem::fromProduct($product, $category);
         });

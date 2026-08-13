@@ -64,6 +64,17 @@ final class DisplayCategoryTest extends TestCase
         $this->handler->handle($query);
     }
 
+    public function testQueryCacheMetadata(): void
+    {
+        $this->repository->expects($this->never())->method('findTreeById');
+
+        $query = new DisplayCategoryQuery(self::CATEGORY_ID);
+
+        $this->assertSame('category-item-' . self::CATEGORY_ID, $query->cacheKey());
+        $this->assertSame(3600, $query->cacheTtl());
+        $this->assertSame(['categories-collection', 'products-collection'], $query->cacheTags());
+    }
+
     private function createCategory(CategoryId $id): Category
     {
         return Category::create(

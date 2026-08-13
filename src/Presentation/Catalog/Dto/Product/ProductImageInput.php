@@ -12,15 +12,5 @@ final class ProductImageInput
 {
     #[Groups(['shop_product:write'])]
     #[Assert\NotBlank]
-    #[Assert\File(
-        maxSize: '10M',
-        mimeTypes: ['image/png', 'image/gif', 'image/jpeg', 'image/pjpeg'],
-    )]
-    #[Assert\Image(
-        minWidth: 200,
-        maxWidth: 2000,
-        maxHeight: 2000,
-        minHeight: 200,
-    )]
     public ?UploadedFile $imageFile = null;
 }

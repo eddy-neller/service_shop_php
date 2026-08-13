@@ -54,9 +54,12 @@ services:
     depends_on:
       mongodb:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       PHP_IDE_CONFIG: serverName=${PHP_IDE_SERVER_NAME:-en-shop-service-shop}
       XDEBUG_MODE: ${XDEBUG_MODE:-off}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
     volumes:
       # Commenter la ligne suivante en production
       - ./:/var/www:rw
@@ -75,6 +78,18 @@ services:
       # Commenter la ligne suivante en production
       - ./:/var/www:rw
       - ./docker/nginx/conf.d:/etc/nginx/conf.d:rw
+
+  redis:
+      container_name: en_shop_service_shop_redis
+      restart: unless-stopped
+      build:
+          context: ./docker/redis
+          dockerfile: ./Dockerfile
+      healthcheck:
+          test: ["CMD", "redis-cli", "ping"]
+          interval: 10s
+          timeout: 5s
+          retries: 5
 
 volumes:
 ###> doctrine/mongodb-odm-bundle ###

@@ -7,6 +7,7 @@ namespace App\Application\Catalog\UseCase\Command\DeleteCategoryByAdmin;
 use App\Application\Catalog\Port\CategoryRepositoryInterface;
 use App\Application\Shared\CQRS\Command\CommandHandlerInterface;
 use App\Application\Shared\Port\ClockInterface;
+use App\Application\Shared\Port\DomainEventBusInterface;
 use App\Application\Shared\Port\TransactionalInterface;
 use App\Domain\Catalog\Exception\CategoryNotFoundException;
 use App\Domain\Catalog\ValueObject\CategoryId;
@@ -17,6 +18,7 @@ final readonly class DeleteCategoryByAdminCommandHandler implements CommandHandl
         private CategoryRepositoryInterface $repository,
         private ClockInterface $clock,
         private TransactionalInterface $transactional,
+        private DomainEventBusInterface $eventBus,
     ) {
     }
 
@@ -34,6 +36,7 @@ final readonly class DeleteCategoryByAdminCommandHandler implements CommandHandl
             $category->delete($this->clock->now());
 
             $this->repository->delete($category);
+            $this->eventBus->publishAll($category->releaseEvents());
         });
     }
 }

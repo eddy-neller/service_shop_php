@@ -1,19 +1,34 @@
 framework:
     cache:
-        # Unique name of your app: used to compute stable namespaces for cache keys.
-        #prefix_seed: your_vendor_name/app_name
+        # Redis est propre a ce service et partage le cache entre ses futures replicas.
+        # Il ne porte aucun etat d'authentification et n'est jamais mutualise avec Identity.
+        prefix_seed: en_shop_service_shop
 
         # The "app" cache stores to the filesystem by default.
         # The data in this cache should persist between deploys.
         # Other options include:
 
         # Redis
-        #app: cache.adapter.redis
-        #default_redis_provider: redis://localhost
+        app: cache.adapter.redis
+        default_redis_provider: '%env(REDIS_URL)%'
 
         # APCu (not recommended with heavy random-write workloads as memory fragmentation can cause perf issues)
         #app: cache.adapter.apcu
 
-        # Namespaced pools use the above "app" backend by default
-        #pools:
-            #my.dedicated.cache: null
+        pools:
+            # Cache des queries de lecture, purge par tags depuis `CacheInvalidationMiddleware`.
+            # L'adapter Redis tag-aware rend l'invalidation visible par toutes les replicas.
+            cache.tag:
+                adapter: cache.adapter.redis_tag_aware
+
+when@test:
+    framework:
+        cache:
+            # Volatile et par processus : le navigateur de test reboote le noyau entre deux
+            # requetes, donc aucune lecture cachee ne franchit une frontiere de test. Le
+            # comportement du cache lui-meme est couvert par ses tests dedies.
+            app: cache.adapter.array
+            pools:
+                cache.tag:
+                    adapter: cache.app
+                    tags: true

@@ -467,12 +467,26 @@ final class CategoryTest extends BaseTest
     public function testDeleteCatalogCategorySuccess(
         array $options,
     ): void {
+        $emptyCategory = $this->getInstance(Category::class, ['title' => 'Shop category level 1 title 2']);
+        self::assertInstanceOf(Category::class, $emptyCategory);
+
         $this->testSuccess(
             Request::METHOD_DELETE,
-            $this->iri,
+            self::URL_API_OPE . '/' . $emptyCategory->id,
             $options,
             Response::HTTP_NO_CONTENT,
         );
+    }
+
+    public function testDeleteCatalogCategoryRejectsCategoryWithProductsOrChildren(): void
+    {
+        $this->testException(Request::METHOD_DELETE, $this->iri, [
+            'auth_bearer' => self::PLACEHOLDERS['TOKENS']['ADMIN'],
+        ], [
+            'class' => ClientExceptionInterface::class,
+            'code' => Response::HTTP_CONFLICT,
+            'message' => 'Category must have no products or children before deletion.',
+        ]);
     }
 
     public static function provideDeleteCatalogCategoryException(): Generator

@@ -33,7 +33,7 @@ class ProductFixtures extends Fixture implements DependentFixtureInterface, Fixt
         $usedSlugs = [];
 
         $products = $this->seedProducts();
-        $imageNames = array_column($products, 'imageName');
+        $sourceImageNames = array_column($products, 'sourceImageName');
 
         for ($i = count($products); $i < self::NB_PRODUCT; ++$i) {
             $products[] = [
@@ -41,7 +41,7 @@ class ProductFixtures extends Fixture implements DependentFixtureInterface, Fixt
                 'subtitle' => $faker->sentence($faker->numberBetween(3, 6)),
                 // Le prix est stocke en centimes, comme la valeur portee par `Money`.
                 'price' => $faker->numberBetween(500, 10000),
-                'imageName' => $imageNames[array_rand($imageNames)],
+                'sourceImageName' => $sourceImageNames[array_rand($sourceImageNames)],
             ];
         }
 
@@ -67,7 +67,10 @@ class ProductFixtures extends Fixture implements DependentFixtureInterface, Fixt
             $product->priceCurrency = 'EUR';
             $product->slug = $this->uniqueSlug($value['title'], $usedSlugs);
             $product->categoryId = $category->id;
-            $product->imageName = $value['imageName'];
+            // Chaque produit possede son propre fichier, meme lorsqu'il reutilise l'un des
+            // huit visuels de reference. Le nom stable evite aussi d'accumuler des fichiers a
+            // chaque rechargement des fixtures.
+            $product->imageName = md5('shop-fixture-product-' . $index) . '.jpg';
             $product->createdAt = $timestamps['createdAt'];
             $product->updatedAt = $timestamps['updatedAt'];
 
@@ -90,23 +93,23 @@ class ProductFixtures extends Fixture implements DependentFixtureInterface, Fixt
 
         $manager->flush();
 
-        $this->publishSeedImages();
+        $this->publishSeedImages($products);
     }
 
     /**
-     * @return list<array{title: string, subtitle: string, price: int, imageName: string}>
+     * @return list<array{title: string, subtitle: string, price: int, sourceImageName: string}>
      */
     private function seedProducts(): array
     {
         return [
-            ['title' => 'Bonnet rouge', 'subtitle' => "Le bonnet parfait pour l'hiver", 'price' => 900, 'imageName' => 'bonnet1.jpg'],
-            ['title' => 'Le Bonnet du skieur', 'subtitle' => 'Le bonnet parfait pour le ski', 'price' => 1200, 'imageName' => 'bonnet2.jpg'],
-            ['title' => "L'écharpe du lover", 'subtitle' => "L'écharpe parfaite pour les soirées romantiques", 'price' => 1900, 'imageName' => 'echarpe1.jpg'],
-            ['title' => "L'écharpe du samedi soir", 'subtitle' => "L'écharpe parfaite pour vos week-ends", 'price' => 1400, 'imageName' => 'echarpe2.jpg'],
-            ['title' => 'Le manteau de soirée', 'subtitle' => 'Le manteau martiniquais pour vos soirées', 'price' => 6900, 'imageName' => 'manteau1.jpg'],
-            ['title' => 'Le manteau famille', 'subtitle' => 'Le manteau pour vos sorties en famille', 'price' => 7990, 'imageName' => 'manteau2.jpg'],
-            ['title' => 'Le T-Shirt manche longue', 'subtitle' => 'Le T-Shirt taillé pour les hommes', 'price' => 1490, 'imageName' => 'tshirt2.jpg'],
-            ['title' => 'Le T-Shirt basique', 'subtitle' => 'Le T-Shirt basique parfait pour les hommes', 'price' => 990, 'imageName' => 'tshirt1.jpg'],
+            ['title' => 'Bonnet rouge', 'subtitle' => "Le bonnet parfait pour l'hiver", 'price' => 900, 'sourceImageName' => 'bonnet1.jpg'],
+            ['title' => 'Le Bonnet du skieur', 'subtitle' => 'Le bonnet parfait pour le ski', 'price' => 1200, 'sourceImageName' => 'bonnet2.jpg'],
+            ['title' => "L'écharpe du lover", 'subtitle' => "L'écharpe parfaite pour les soirées romantiques", 'price' => 1900, 'sourceImageName' => 'echarpe1.jpg'],
+            ['title' => "L'écharpe du samedi soir", 'subtitle' => "L'écharpe parfaite pour vos week-ends", 'price' => 1400, 'sourceImageName' => 'echarpe2.jpg'],
+            ['title' => 'Le manteau de soirée', 'subtitle' => 'Le manteau martiniquais pour vos soirées', 'price' => 6900, 'sourceImageName' => 'manteau1.jpg'],
+            ['title' => 'Le manteau famille', 'subtitle' => 'Le manteau pour vos sorties en famille', 'price' => 7990, 'sourceImageName' => 'manteau2.jpg'],
+            ['title' => 'Le T-Shirt manche longue', 'subtitle' => 'Le T-Shirt taillé pour les hommes', 'price' => 1490, 'sourceImageName' => 'tshirt2.jpg'],
+            ['title' => 'Le T-Shirt basique', 'subtitle' => 'Le T-Shirt basique parfait pour les hommes', 'price' => 990, 'sourceImageName' => 'tshirt1.jpg'],
         ];
     }
 
@@ -115,10 +118,13 @@ class ProductFixtures extends Fixture implements DependentFixtureInterface, Fixt
      * `imageUrl` du catalogue de dev pointeraient vers des 404. Les visuels de reference
      * vivent dans `assets/`, versionnes ; `public/uploads/` ne l'est pas.
      */
-    private function publishSeedImages(): void
+    /**
+     * @param list<array{title: string, subtitle: string, price: int, sourceImageName: string}> $products
+     */
+    private function publishSeedImages(array $products): void
     {
-        $source = $this->projectDir . '/assets/images/shop/product';
-        $destination = $this->projectDir . '/public/uploads/images/shop/product';
+        $source = $this->projectDir . '/assets/images/catalog/product';
+        $destination = $this->projectDir . '/public/uploads/images/catalog/product';
 
         if (!is_dir($source)) {
             return;
@@ -128,11 +134,12 @@ class ProductFixtures extends Fixture implements DependentFixtureInterface, Fixt
             return;
         }
 
-        foreach ($this->seedProducts() as $product) {
-            $file = $product['imageName'];
+        foreach ($products as $index => $product) {
+            $sourceFile = $product['sourceImageName'];
+            $file = md5('shop-fixture-product-' . $index) . '.jpg';
 
-            if (is_file($source . '/' . $file) && !is_file($destination . '/' . $file)) {
-                copy($source . '/' . $file, $destination . '/' . $file);
+            if (is_file($source . '/' . $sourceFile) && !is_file($destination . '/' . $file)) {
+                copy($source . '/' . $sourceFile, $destination . '/' . $file);
             }
         }
     }

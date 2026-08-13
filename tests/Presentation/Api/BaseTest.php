@@ -15,7 +15,6 @@ use App\Domain\Catalog\ValueObject\CategoryDescription;
 use App\Domain\Catalog\ValueObject\CategoryId;
 use App\Domain\Catalog\ValueObject\CategoryTitle;
 use App\Domain\Catalog\ValueObject\ProductDescription;
-use App\Domain\Catalog\ValueObject\ProductImage;
 use App\Domain\Catalog\ValueObject\ProductSubtitle;
 use App\Domain\Catalog\ValueObject\ProductTitle;
 use App\Domain\SharedKernel\ValueObject\Money;
@@ -119,8 +118,6 @@ abstract class BaseTest extends ApiTestCase
 
     /** Titre du produit servant de point d'ancrage aux tests. */
     protected const string SEED_PRODUCT_TITLE = 'Product title 1';
-
-    private const string SEED_IMAGE_NAME = 'paysage.jpg';
 
     /** Les index du mapping ne sont poses qu'une fois par processus (cf. resetDatabase()). */
     private static bool $indexesEnsured = false;
@@ -474,7 +471,7 @@ abstract class BaseTest extends ApiTestCase
             now: $now,
         );
 
-        $product->updateImage(ProductImage::create(self::SEED_IMAGE_NAME), $now);
+        $product->updateImage(md5($title) . '.jpg', $now);
 
         return $product;
     }

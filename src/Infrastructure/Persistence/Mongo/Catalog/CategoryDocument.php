@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Infrastructure\Persistence\Mongo\Catalog;
 
 use DateTimeImmutable;
-use Doctrine\ODM\MongoDB\Mapping\Annotations as MongoDB;
+use Doctrine\ODM\MongoDB\Mapping\Attribute as MongoDB;
 
 /**
  * Representation persistee d'une categorie.

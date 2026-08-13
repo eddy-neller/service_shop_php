@@ -83,7 +83,7 @@ Le `DELETE` ne lit ni ne deserialize de ressource (`read: false`, `output: false
 
 ### Upload d'image
 
-`POST /shop/products/{id}/image` attend `multipart/form-data`, avec un champ binaire `imageFile`. `ProductImageInput` impose un fichier PNG, GIF ou JPEG/PJPEG, de 10 Mo maximum, entre 200 et 2 000 pixels dans chaque dimension. Le processor adapte `UploadedFile` en `SymfonyFileAdapter` avant de dispatcher la commande : aucun objet HTTP Symfony ne traverse la frontiere Application.
+`POST /shop/products/{id}/image` attend `multipart/form-data`, avec un champ binaire `imageFile`. `ProductImageInput` garantit sa présence ; le cas d'usage valide ensuite le contenu réel avant tout stockage : JPEG/PJPEG, PNG ou WebP, sans GIF, de 10 MiB maximum et entre 200 et 2 000 pixels dans chaque dimension. Ces limites sont configurées par `PRODUCT_IMAGE_*`. Le processor adapte `UploadedFile` en `SymfonyFileAdapter` avant de dispatcher la commande : aucun objet HTTP Symfony ne traverse la frontiere Application.
 
 ## Points de vigilance lors d'une modification
 
