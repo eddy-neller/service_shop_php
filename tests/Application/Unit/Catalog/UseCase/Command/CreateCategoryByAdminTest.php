@@ -18,6 +18,7 @@ use App\Domain\Catalog\Model\Category;
 use App\Domain\Catalog\ValueObject\CategoryDescription;
 use App\Domain\Catalog\ValueObject\CategoryId;
 use App\Domain\Catalog\ValueObject\CategoryTitle;
+use App\Domain\SharedKernel\Event\DomainEventInterface;
 use App\Domain\SharedKernel\ValueObject\Slug;
 use DateTimeImmutable;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -37,7 +38,7 @@ final class CreateCategoryByAdminTest extends TestCase
 
     private SlugGeneratorInterface&MockObject $slugGenerator;
 
-    /** @var list<\App\Domain\SharedKernel\Event\DomainEventInterface> */
+    /** @var list<DomainEventInterface> */
     private array $publishedEvents = [];
 
     private CreateCategoryByAdminCommandHandler $handler;

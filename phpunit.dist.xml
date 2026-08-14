@@ -30,11 +30,29 @@
         <testsuite name="domain.catalog">
             <directory>tests/Domain/Catalog/Unit</directory>
         </testsuite>
+        <testsuite name="domain.customer">
+            <directory>tests/Domain/Customer/Unit</directory>
+        </testsuite>
+        <testsuite name="domain.ordering">
+            <directory>tests/Domain/Ordering/Unit</directory>
+        </testsuite>
         <testsuite name="appli.catalog">
             <directory>tests/Application/Unit/Catalog/UseCase</directory>
         </testsuite>
+        <testsuite name="appli.customer">
+            <directory>tests/Application/Unit/Customer/UseCase</directory>
+        </testsuite>
+        <testsuite name="appli.ordering">
+            <directory>tests/Application/Unit/Ordering</directory>
+        </testsuite>
         <testsuite name="pres.state.catalog">
             <directory>tests/Presentation/Unit/State/Catalog</directory>
+        </testsuite>
+        <testsuite name="pres.state.customer">
+            <directory>tests/Presentation/Unit/State/Customer</directory>
+        </testsuite>
+        <testsuite name="pres.state.ordering">
+            <directory>tests/Presentation/Unit/State/Ordering</directory>
         </testsuite>
 
         <!-- Garde-fous transverses. Ils ne testent aucun comportement : ils balayent `src/`
@@ -65,6 +83,9 @@
         <testsuite name="infra.adapter.catalog">
             <directory>tests/Infrastructure/Unit/Adapter/Catalog</directory>
         </testsuite>
+        <testsuite name="infra.adapter.cache">
+            <directory>tests/Infrastructure/Unit/Adapter/Cache</directory>
+        </testsuite>
 
         <!-- Suites touchant un vrai MongoDB (base `service_shop_test`, cf. .env.test).
              Ce sont les seules a attraper les regressions de mapping, d'index et de
@@ -77,6 +98,15 @@
         </testsuite>
         <testsuite name="api.catalog.product">
             <file>tests/Presentation/Api/Catalog/ProductTest.php</file>
+        </testsuite>
+        <testsuite name="api.shop.customer">
+            <file>tests/Presentation/Api/Customer/CustomerTest.php</file>
+        </testsuite>
+        <testsuite name="api.shop.address">
+            <file>tests/Presentation/Api/Customer/AddressTest.php</file>
+        </testsuite>
+        <testsuite name="api.shop.cart">
+            <file>tests/Presentation/Api/Ordering/CartTest.php</file>
         </testsuite>
     </testsuites>
 

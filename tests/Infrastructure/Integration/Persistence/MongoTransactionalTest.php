@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Tests\Infrastructure\Integration\Persistence;
 
 use App\Domain\Catalog\ValueObject\CategoryTitle;
+use App\Domain\SharedKernel\Exception\ConcurrentModificationException;
+use App\Domain\SharedKernel\Exception\ConflictInterface;
+use Doctrine\ODM\MongoDB\LockException;
 use RuntimeException;
 use Throwable;
 
@@ -131,6 +134,43 @@ final class MongoTransactionalTest extends MongoPersistenceTestCase
         });
 
         self::assertNull($this->categories->findByTitle(CategoryTitle::fromString('Guitares')));
+    }
+
+    /**
+     * L'echec du verrou optimiste doit ressortir en conflit metier, pas en erreur serveur.
+     *
+     * MongoDB n'ayant pas de `SELECT … FOR UPDATE`, les agregats dont l'etat depend de leur
+     * propre contenu (plafond d'adresses, fusion de lignes de panier) sont proteges par un
+     * `#[MongoDB\Version]`. Le perdant d'une course voit alors l'ODM lever une
+     * `LockException` : non traduite, elle sortirait en **500** et accuserait le serveur
+     * d'un conflit ordinaire que le client n'a qu'a rejouer.
+     */
+    public function testALockFailureSurfacesAsAConflictAndNotAsAServerError(): void
+    {
+        $failed = $this->transactionalFailure(function (): void {
+            $this->categories->save($this->aCategory('Guitares'));
+
+            throw LockException::lockFailed(null);
+        });
+
+        self::assertInstanceOf(ConcurrentModificationException::class, $failed);
+        self::assertInstanceOf(ConflictInterface::class, $failed);
+        self::assertInstanceOf(LockException::class, $failed->getPrevious());
+        self::assertSame(0, $this->countIn('category', ['title' => 'Guitares']));
+    }
+
+    /**
+     * Le pendant du precedent : toute autre defaillance doit continuer de ressortir intacte.
+     * Traduire trop large masquerait un vrai bug derriere un 409 rejouable.
+     */
+    public function testAnyOtherFailureIsLeftUntouched(): void
+    {
+        $failed = $this->transactionalFailure(function (): void {
+            throw new RuntimeException('regle metier violee');
+        });
+
+        self::assertInstanceOf(RuntimeException::class, $failed);
+        self::assertSame('regle metier violee', $failed->getMessage());
     }
 
     public function testTheCallbackResultIsReturned(): void

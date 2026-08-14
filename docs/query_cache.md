@@ -17,6 +17,7 @@ l'implémentent :
 | `DisplayListCategoryQuery` | `category-list-<sha256(payload)>` | `categories-collection` | 3 600 s |
 | `DisplayProductQuery` | `product-item-<productId>` | `products-collection`, `categories-collection` | 3 600 s |
 | `DisplayCategoryQuery` | `category-item-<categoryId>` | `products-collection`, `categories-collection` | 3 600 s |
+| `DisplayMyCustomerQuery` | `customer-of-user-<userAccountId>` | `customer-of-user-<userAccountId>` | 86 400 s |
 
 La clé est un hash du payload normalisé — page, `itemsPerPage`, filtres et tri, avec `ksort()` sur
 les tableaux : deux requêtes équivalentes dont les paramètres arrivent dans un ordre différent
@@ -91,7 +92,30 @@ nécessaire : chaque écriture du catalogue les purge avec les listes.
 
 La classe s'appuie sur le marqueur `CatalogDomainEventInterface` plutôt que sur une liste de douze
 classes. C'est la raison d'être de cette interface — sans elle, l'oubli d'un événement dans le
-`match` ne se verrait qu'à la lecture périmée.
+`match` ne se verrait qu'à la lecture périmée. Chaque contexte suit la même règle : on type sur son
+marqueur, jamais sur ses événements un à un.
+
+### `Customer` : le tag qui répare un trou hérité
+
+`DisplayMyCustomerQuery` traduit le `sub` du jeton en `customerId`. Elle est rejouée **à chaque
+requête `/me`**, d'où un TTL de 24 h justifié par l'immutabilité de l'association.
+
+Le monolithe la cachait déjà ainsi — **sans que rien ne l'invalide**, faute d'événements côté
+`Customer` ; son docblock le signalait. C'est pour cela que `Customer` et `Address` émettent
+désormais des événements : `customer-of-user-{id}` est purgé dès qu'un fait du contexte survient.
+Sans lui, un client fraîchement provisionné resterait introuvable pendant une journée.
+
+Les événements portent aussi `customer-{id}`, qui n'a pas encore de lecteur. Purger un tag inutilisé
+ne coûte rien, et rendre une query cachable plus tard devient une ligne plutôt qu'une enquête.
+
+### `Ordering` : rien n'est caché, et c'est délibéré
+
+**`DisplayMyCartQuery` ne doit pas devenir cachable.** `CartItemFactory` relit prix, titre et image
+dans le catalogue à chaque affichage — le panier ne fige rien. Un `CartItem` mis en cache servirait
+un tarif périmé dès le premier changement de prix, et l'invalider correctement supposerait qu'un
+`ProductRepricedEvent` purge **tous** les paniers : un éventail sans tag borné.
+
+Le tag `cart-of-{ownerId}` est néanmoins émis, pour la même raison que `customer-{id}`.
 
 ## Vérification
 

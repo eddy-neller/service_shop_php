@@ -8,6 +8,7 @@ use ApiPlatform\Symfony\Bundle\Test\ApiTestCase;
 use ApiPlatform\Symfony\Bundle\Test\Client;
 use App\Application\Catalog\Port\CategoryRepositoryInterface;
 use App\Application\Catalog\Port\ProductRepositoryInterface;
+use App\Application\Customer\Port\CustomerRepositoryInterface;
 use App\Application\Shared\Port\TransactionalInterface;
 use App\Domain\Catalog\Model\Category;
 use App\Domain\Catalog\Model\Product;
@@ -17,6 +18,8 @@ use App\Domain\Catalog\ValueObject\CategoryTitle;
 use App\Domain\Catalog\ValueObject\ProductDescription;
 use App\Domain\Catalog\ValueObject\ProductSubtitle;
 use App\Domain\Catalog\ValueObject\ProductTitle;
+use App\Domain\Customer\Model\Customer;
+use App\Domain\Customer\ValueObject\UserAccountId;
 use App\Domain\SharedKernel\ValueObject\Money;
 use App\Domain\SharedKernel\ValueObject\Slug;
 use DateTimeImmutable;
@@ -71,6 +74,7 @@ abstract class BaseTest extends ApiTestCase
         'TOKENS' => [
             'ADMIN' => 'ADMIN_TOKEN_PLACEHOLDER',
             'MEMBER' => 'MEMBER_TOKEN_PLACEHOLDER',
+            'MEMBER_1' => 'MEMBER_1_TOKEN_PLACEHOLDER',
         ],
         'IMAGES' => [
             'PAYSAGE' => 'PAYSAGE_IMAGE_PLACEHOLDER',
@@ -81,6 +85,7 @@ abstract class BaseTest extends ApiTestCase
     private const array TOKEN_PLACEHOLDER_MAPPING = [
         'ADMIN_TOKEN_PLACEHOLDER' => 'user_admin',
         'MEMBER_TOKEN_PLACEHOLDER' => 'user_member',
+        'MEMBER_1_TOKEN_PLACEHOLDER' => 'user_member_1',
     ];
 
     private const array IMAGE_PLACEHOLDER_MAPPING = [
@@ -111,10 +116,16 @@ abstract class BaseTest extends ApiTestCase
         'user_admin' => ['ROLE_ADMIN'],
         'user_moder' => ['ROLE_MODERATEUR'],
         'user_member' => ['ROLE_USER'],
+        // Second membre ordinaire : sert aux cas « pas proprietaire », qui verifient qu'un
+        // utilisateur authentifie ne peut pas atteindre l'adresse d'un autre.
+        'user_member_1' => ['ROLE_USER'],
     ];
 
     /** Titre de la categorie servant de point d'ancrage aux tests (parent + enfant + description). */
     protected const string SEED_CATEGORY_TITLE = 'Shop category level 1 title 1';
+
+    /** Libelle de l'adresse semee pour `user_member`, point d'ancrage des tests `/me`. */
+    protected const string SEED_ADDRESS_LABEL = 'Seed address';
 
     /** Titre du produit servant de point d'ancrage aux tests. */
     protected const string SEED_PRODUCT_TITLE = 'Product title 1';
@@ -137,6 +148,7 @@ abstract class BaseTest extends ApiTestCase
 
         $this->resetDatabase();
         $this->seedCatalog();
+        $this->seedCustomer();
     }
 
     protected function getApiClient(): HttpClientInterface
@@ -207,7 +219,12 @@ abstract class BaseTest extends ApiTestCase
      * UUID stable par utilisateur : deux appels dans un meme test doivent produire la
      * meme identite, sans quoi un scenario multi-requetes deviendrait incoherent.
      */
-    private function userIdOf(string $username): string
+    /**
+     * Le `sub` du jeton de test. Ce service n'ayant aucun compte, c'est **la seule**
+     * identite d'utilisateur qui existe : les tests s'en servent pour retrouver le client
+     * seme par `seedCustomer()`.
+     */
+    protected function userIdOf(string $username): string
     {
         return Uuid::uuid5(Uuid::NAMESPACE_OID, $username)->toString();
     }
@@ -476,6 +493,58 @@ abstract class BaseTest extends ApiTestCase
         return $product;
     }
 
+    /**
+     * Provisionne le client des trois utilisateurs de test.
+     *
+     * `userAccountId` vaut le `sub` que `getToken()` place dans le jeton : c'est ce qui rend
+     * les routes `/me` accessibles sans passer par le relais de l'etape B, lequel n'existe
+     * pas encore.
+     */
+    protected function seedCustomer(): void
+    {
+        $customers = static::getContainer()->get(CustomerRepositoryInterface::class);
+        $transactional = static::getContainer()->get(TransactionalInterface::class);
+
+        if (
+            !$customers instanceof CustomerRepositoryInterface
+            || !$transactional instanceof TransactionalInterface
+        ) {
+            throw new RuntimeException('seedCustomer: customer services not found');
+        }
+
+        $now = new DateTimeImmutable('2025-01-01 10:00:00');
+
+        $transactional->transactional(function () use ($customers, $now): void {
+            foreach (array_keys(self::USER_ROLES) as $username) {
+                $customer = Customer::create(
+                    id: $customers->nextIdentity(),
+                    now: $now,
+                    userAccountId: UserAccountId::fromString($this->userIdOf($username)),
+                );
+
+                if ('user_member' === $username) {
+                    $customer->addAddress(
+                        addressId: $customers->nextAddressIdentity(),
+                        label: self::SEED_ADDRESS_LABEL,
+                        firstname: 'John',
+                        lastname: 'Doe',
+                        street: '1 rue de la Paix',
+                        zipCode: '75000',
+                        city: 'Paris',
+                        country: 'France',
+                        phone: '0102030405',
+                        now: $now,
+                        company: 'Acme',
+                    );
+                }
+
+                $customers->save($customer);
+            }
+        });
+
+        $this->documentManager->clear();
+    }
+
     private function slugify(string $value): string
     {
         return strtolower(str_replace([' ', "'"], ['-', ''], $value));
@@ -503,7 +572,7 @@ abstract class BaseTest extends ApiTestCase
             self::$indexesEnsured = true;
         }
 
-        foreach (['product', 'category'] as $collection) {
+        foreach (['product', 'category', 'customer', 'cart'] as $collection) {
             $database->selectCollection($collection)->deleteMany([]);
         }
 

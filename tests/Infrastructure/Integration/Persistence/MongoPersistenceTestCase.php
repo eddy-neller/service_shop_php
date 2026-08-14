@@ -6,6 +6,8 @@ namespace App\Tests\Infrastructure\Integration\Persistence;
 
 use App\Application\Catalog\Port\CategoryRepositoryInterface;
 use App\Application\Catalog\Port\ProductRepositoryInterface;
+use App\Application\Customer\Port\CustomerRepositoryInterface;
+use App\Application\Ordering\Port\CartRepositoryInterface;
 use App\Application\Shared\Port\TransactionalInterface;
 use App\Domain\Catalog\Model\Category;
 use App\Domain\Catalog\Model\Product;
@@ -39,6 +41,10 @@ abstract class MongoPersistenceTestCase extends KernelTestCase
 
     protected CategoryRepositoryInterface $categories;
 
+    protected CustomerRepositoryInterface $customers;
+
+    protected CartRepositoryInterface $carts;
+
     protected TransactionalInterface $transactional;
 
     /** Les index du mapping ne sont poses qu'une fois par processus (cf. resetDatabase()). */
@@ -60,6 +66,14 @@ abstract class MongoPersistenceTestCase extends KernelTestCase
         $categories = $container->get(CategoryRepositoryInterface::class);
         self::assertInstanceOf(CategoryRepositoryInterface::class, $categories);
         $this->categories = $categories;
+
+        $customers = $container->get(CustomerRepositoryInterface::class);
+        self::assertInstanceOf(CustomerRepositoryInterface::class, $customers);
+        $this->customers = $customers;
+
+        $carts = $container->get(CartRepositoryInterface::class);
+        self::assertInstanceOf(CartRepositoryInterface::class, $carts);
+        $this->carts = $carts;
 
         $transactional = $container->get(TransactionalInterface::class);
         self::assertInstanceOf(TransactionalInterface::class, $transactional);
@@ -122,7 +136,7 @@ abstract class MongoPersistenceTestCase extends KernelTestCase
             self::$indexesEnsured = true;
         }
 
-        foreach (['product', 'category', 'domain_event_outbox'] as $collection) {
+        foreach (['product', 'category', 'customer', 'cart', 'domain_event_outbox'] as $collection) {
             $database->selectCollection($collection)->deleteMany([]);
         }
 
