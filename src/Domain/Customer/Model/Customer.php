@@ -21,8 +21,8 @@ use App\Domain\SharedKernel\Event\DomainEventTrait;
 use DateTimeImmutable;
 
 /**
- * Racine d'agregat. Elle porte ses adresses (voir `Address`), donc les deux invariants que
- * le monolithe deleguait a PostgreSQL : au plus `MAX_ADDRESSES`, et exactement une adresse
+ * Racine d'agregat. Elle porte ses adresses (voir `Address`) et garantit au plus
+ * `MAX_ADDRESSES`, avec exactement une adresse
  * par defaut des qu'il en existe au moins une.
  */
 final class Customer
@@ -87,8 +87,7 @@ final class Customer
     /**
      * Sort tot si le client est deja actif.
      *
-     * Le monolithe n'avait aucune garde de transition parce que rien ne dependait d'une
-     * seconde invocation. Ici un evenement en decoule : sans cette garde, chaque nouvelle
+     * Une garde de transition est necessaire : un evenement en decoule. Sans elle, chaque nouvelle
      * tentative du relais de provisionnement en republierait un.
      */
     public function activate(DateTimeImmutable $now): void

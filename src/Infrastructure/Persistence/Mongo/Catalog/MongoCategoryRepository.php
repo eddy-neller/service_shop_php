@@ -74,8 +74,8 @@ final readonly class MongoCategoryRepository implements CategoryRepositoryInterf
     /**
      * Ne flushe pas : voir `MongoTransactional`.
      *
-     * `level` est calcule ici, et nulle part ailleurs. Le nested set de Gedmo le
-     * maintenait cote monolithe ; il n'a pas d'equivalent ODM dans cette stack, et un
+     * `level` est calcule ici, et nulle part ailleurs. Un nested set Gedmo s'en chargerait,
+     * mais il n'a pas d'equivalent ODM dans cette stack, et un
      * arbre de catalogue est assez peu profond pour qu'un calcul explicite soit plus
      * lisible qu'une renumerotation d'intervalles.
      */

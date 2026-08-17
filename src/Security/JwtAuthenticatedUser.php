@@ -11,8 +11,6 @@ use Ramsey\Uuid\Uuid;
 use Ramsey\Uuid\UuidInterface;
 
 /**
- * Copie conforme de App\Infrastructure\Security\JwtAuthenticatedUser du monolithe.
- *
  * Cette classe est la raison pour laquelle ce service peut authentifier sans base :
  * l'utilisateur est integralement reconstruit depuis les claims `sub` et `roles`,
  * sans repository ni requete. Ne pas y ajouter de dependance.

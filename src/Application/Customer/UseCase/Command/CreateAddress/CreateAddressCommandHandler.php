@@ -20,7 +20,7 @@ use App\Domain\Customer\ValueObject\CustomerId;
  * Le plafond de cinq adresses et le choix du defaut ne sont plus decides ici : ils sont
  * portes par `Customer::addAddress()`.
  *
- * Ce n'est pas un deplacement cosmetique. Le monolithe verifiait le plafond par un
+ * Ce n'est pas un deplacement cosmetique. Verifier le plafond par un
  * `countByOwnerForUpdate()` qui prenait un verrou pessimiste sur la ligne du client, ce que
  * MongoDB ne sait pas faire. Verifier puis ecrire depuis ce handler laisserait deux requetes
  * concurrentes creer une sixieme adresse sans qu'aucune erreur ne le signale. Dans l'agregat,

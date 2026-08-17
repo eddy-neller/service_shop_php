@@ -12,7 +12,7 @@ use DateTimeImmutable;
 /**
  * Entite **interne** a l'agregat `Customer`, pas une racine.
  *
- * Le monolithe en faisait une racine avec son propre repository, et PostgreSQL tenait alors
+ * En faire une racine avec son propre repository imposerait a PostgreSQL de tenir
  * les deux invariants transverses : le plafond de 5 par un verrou pessimiste sur la ligne
  * client, l'unicite du defaut par un index unique partiel. MongoDB n'a ni l'un ni l'autre.
  * Ces regles vivent donc dans `Customer`, ou elles se verifient en memoire et se commitent

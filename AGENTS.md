@@ -1,7 +1,6 @@
 # AGENTS.md — service_shop
 
-> Guide pour humains **et** agents. Service d'extraction du bounded context Shop
-> du monolithe `service_identity/`.
+> Guide pour humains **et** agents. Service du bounded context Shop.
 > Jalon 1 : authentification. Jalon 2, etape A : `Catalog` sur MongoDB.
 > **Jalon 2, etape B : Domain Events, outbox MongoDB, worker, cache de queries.**
 
@@ -23,12 +22,12 @@ n'intervient a aucun moment — ne pas raisonner sur les deux piles a la fois.
   claims. Il possede desormais **ses propres donnees** : le catalogue, dans **sa** base MongoDB.
 - **N'est pas** : un emetteur. Il ne detient que la cle **publique**. Il est structurellement
   incapable de forger un token, et cette propriete doit etre preservee.
-- **N'a pas** : de broker ni le moindre acces a la base du monolithe. Aucune de ces dependances ne
+- **N'a pas** : de broker ni le moindre acces a la base de `service_identity`. Aucune de ces dependances ne
   doit etre ajoutee sans une raison metier explicite. L'outbox des Domain Events est une collection
   de **sa** base ; le cache de queries vit dans un Redis **dedie** a ce service, partage entre ses
   replicas et jamais mutualise avec `service_identity`.
 
-Le service demarre et repond **seul**, sans la stack du monolithe. C'est une propriete verifiee par
+Le service demarre et repond **seul**, sans la stack de `service_identity`. C'est une propriete verifiee par
 `GET /health`, a preserver. Sa base lui appartient : `docker-compose.yaml` ne pointe vers aucune
 stack externe.
 
@@ -66,12 +65,11 @@ Avant de proposer une revocation immediate ici, relire ce paragraphe.
 
 ## Persistance : MongoDB, et ce que ca change
 
-Le catalogue est stocke dans **MongoDB**, via **Doctrine ODM**. Le monolithe utilise PostgreSQL et
-Doctrine ORM : c'est un choix de persistance polyglotte assume, pas un alignement rate.
+Le catalogue est stocke dans **MongoDB**, via **Doctrine ODM** : c'est un choix de persistance
+polyglotte assume.
 
-Le domaine ne s'en apercoit pas, et c'est la propriete a preserver. `Domain/`, `Application/` et
-`Presentation/` ont ete repris **sans une ligne de modification** a l'etape A, avec leurs 155 tests
-a ports mockes (76 `domain.catalog` + 46 `appli.catalog` + 33 `pres.state.catalog`).
+Le domaine ne s'en apercoit pas, et c'est la propriete a preserver. Les 155 tests a ports mockes
+(76 `domain.catalog` + 46 `appli.catalog` + 33 `pres.state.catalog`) en sont le garde-fou.
 
 L'etape B a rouvert `Application/` — mais pas pour la persistance. Les sept command handlers ont
 gagne un argument `DomainEventBusInterface`, ce qui a impose de retoucher la suite `appli.catalog`
@@ -119,7 +117,7 @@ docker compose exec mongodb mongosh --quiet --eval \
 ### `save()` ne flushe pas
 
 L'ODM ne rend transactionnelles **que les operations d'un meme flush** — pas les requetes manuelles,
-pas les agregations. Consequence sur le contrat des repositories, differente du monolithe :
+pas les agregations. Le contrat des repositories est donc le suivant :
 
 - `save()` et `delete()` se contentent de `persist()` / `remove()` ;
 - le flush unique est declenche par `MongoTransactional::transactional()` ;
@@ -138,7 +136,7 @@ reellement l'unicite des titres et des slugs. Ils ne sont poses par aucune migra
 ### Fixtures
 
 `make fixtures` charge le catalogue de developpement : **30 categories** sur 4 niveaux (2 / 4 / 8 / 16)
-et **1000 produits**, dont les 8 visuels de reference du monolithe. La commande **purge la base** —
+et **1000 produits**, dont les 8 visuels de reference. La commande **purge la base** —
 d'ou le groupe `dev`, qui n'est joue nulle part ailleurs. La suite de tests, elle, n'y touche pas :
 elle vit dans `service_shop_test` et pose son propre jeu.
 
@@ -209,9 +207,7 @@ $this->transactional->transactional(function () use ($product): void {
 pilote. C'est ce qui met la ligne d'outbox dans le flush unique de `MongoTransactional`, donc dans
 la transaction de l'agregat.
 
-La tentation de faire autrement est forte, parce que le monolithe fait autrement : sur Doctrine
-ORM, le transport `doctrine://` emet son INSERT sur la connexion courante et rejoint la transaction
-gratuitement. Ici, une ecriture emise a cote du flush n'a pas la session de la transaction : elle
+Une ecriture emise a cote du flush n'a pas la session de la transaction : elle
 s'engage seule, survit au rollback, et **rien ne le signale**. Les evenements arriveraient dans la
 collection, le worker les consommerait, aucune erreur nulle part — seul un rollback publierait un
 `CategoryCreatedEvent` pour une categorie qui n'existe pas.
@@ -281,9 +277,8 @@ Tout fait du catalogue purge les **deux** collections, parce que les read models
 - **Le cache des queries et son invalidation sont indissociables.** `QueryCacheMiddleware` seul
   servirait des lectures perimees des la premiere ecriture. Les deux ont ete branches ensemble, et
   ne doivent jamais etre desactives separement.
-- **`sync://` ne sert a rien pour les tests de cet outbox.** Le monolithe bascule son transport en
-  `sync://` sous `when@test` pour que les reactions s'executent en ligne. Ca n'aurait aucun effet
-  ici : `sync://` agit au `send()`, et le chemin nominal n'en emet pas. Les evenements iraient
+- **`sync://` ne sert a rien pour les tests de cet outbox.** `sync://` agit au `send()`, et le
+  chemin nominal n'en emet pas. Les evenements iraient
   quand meme dans la collection.
 - **Les evenements portent un `BusNameStamp('event.bus')`.** Le chemin nominal n'etant pas un
   dispatch, personne ne le pose pour nous. Sans lui, le `RoutableMessageBus` du worker retombe sur
@@ -310,6 +305,13 @@ Tout fait du catalogue purge les **deux** collections, parce que les read models
   `public_key` suffit. Verifie en conditions reelles.
 - **Le prefixe de route de l'emetteur est `/api/auth/…`**, pas `/…` : l'endpoint de login est
   `POST /api/auth/login` et il renvoie le champ **`accessToken`** (pas `token`).
+- **Un `git commit` peut echouer sur des tests d'API verts en direct.** grumphp lance ses onze
+  taches **en parallele** : `phpstan`, `rector` et `phpcsfixer` ecrivent dans `var/` pendant que
+  phpunit amorce son noyau. Observe au jalon 3 — 22 erreurs et 15 echecs sur `api.catalog.*`, tous
+  du meme type (`getInstance()` rendant `null` dans un `setUp`, donc un seed qui n'a rien produit),
+  avec vert / rouge / vert sur trois executions successives. Ce n'est pas un probleme de donnees ni
+  de code applicatif. Reflexe : relancer `vendor/bin/phpunit` seul pour trancher avant de chercher
+  quoi que ce soit dans `src/`.
 
 ---
 
@@ -369,17 +371,14 @@ Ils ont ete poses au jalon 3, avant l'arrivee de `Customer` et `Ordering`, et le
 trouve ce que personne n'avait vu : `Money`, `Slug` et `Uuid` du `SharedKernel` etaient arrives au
 jalon 2 **sans leurs tests**. C'est exactement ce qu'ils servent a empecher.
 
-Contrairement a ceux du monolithe, ils n'ont **aucune liste d'exclusion**. La trappe existait la-bas
-pour du code mort (`Order`) et des States non encore testes ; ici elle n'a aucun utilisateur, et une
-trappe pre-percee finit toujours par servir. En rajouter une doit rester un geste visible en diff,
-pas remplir un trou deja pret.
+Ils n'ont **aucune liste d'exclusion**. Une trappe pre-percee finit toujours par servir ; en
+rajouter une doit rester un geste visible en diff, pas remplir un trou deja pret.
 
 Attention : **la tache `phpstan` de grumphp n'analyse que les fichiers suivis par git.** Un fichier
 neuf non encore `git add` passe au vert sans avoir ete regarde. Lancer
 `vendor/bin/phpstan analyse -c phpstan.dist.neon` a la main avant de conclure.
 
-`domain.catalog` et `pres.state.catalog` sont reprises **telles quelles** du monolithe : si l'une
-d'elles doit etre retouchee pour passer au vert, c'est que la persistance a fuite hors
+Si `domain.catalog` ou `pres.state.catalog` doit etre retouchee pour passer au vert, c'est que la persistance a fuite hors
 d'`Infrastructure/`. `appli.catalog` a ete retouchee une fois, a l'etape B, pour un Port de plus
 (`DomainEventBusInterface`) — pas pour une fuite ; voir la section « Persistance ».
 
@@ -434,19 +433,25 @@ C=$(reads); echo "miss=$((B-A)) hit=$((C-B))"   # miss > 0, hit = 0
 
 ## Prochains jalons
 
-- **Jalon 3** — `Customer` / `Cart` / `Ordering` : propriete des donnees, `UserAccountId` sans cle
-  etrangere, saga de provisionnement (aujourd'hui `ProvisionCustomerHandler` cote monolithe).
-- **Retrait** — `Catalog` est encore present dans `service_identity`. Les deux implementations
-  coexistent volontairement le temps de valider celle-ci ; sa suppression fera l'objet d'un jalon dedie.
+- **Jalon 3, etape A — fait.** `Customer` et `Cart` sont ici, adresses embarquees, verrou optimiste,
+  Domain Events.
+- **Jalon 3, etape B — a faire, et c'est le trou du moment.** **Plus rien ne cree de client
+  automatiquement.** Cote `service_identity`, `ProvisionCustomerHandler` et `DisableCustomerHandler`
+  reagissent toujours aux evenements `User`, mais derriere `ShopCustomerClientInterface`, dont
+  l'unique adaptateur journalise sans rien faire. Un compte cree aujourd'hui n'a de client ici que
+  si un admin appelle `POST /api/shop/customers`.
+  Reste a choisir le protocole inter-services (HTTP, gRPC, message) et a ecrire l'adaptateur — plus,
+  cote ce service, `ROLE_SERVICE` hors `role_hierarchy`, la securite de `ShopCustomer` au niveau
+  operation, et un endpoint de desactivation clee sur `userAccountId`.
 
 ---
 
 ## Checklist
 
 - [ ] Aucune cle privee dans le depot (`ls config/jwt/private.pem` doit echouer).
-- [ ] Aucun acces a la base du monolithe ni broker sans justification metier ; Redis reste dedie au
+- [ ] Aucun acces a la base de `service_identity` ni broker sans justification metier ; Redis reste dedie au
       cache applicatif partage entre les replicas de ce service.
-- [ ] `GET /health` repond sans que la stack du monolithe tourne.
+- [ ] `GET /health` repond sans que la stack de `service_identity` tourne.
 - [ ] `make unit` vert, sans test *risky*.
 - [ ] Aucune reference a Doctrine hors `src/Infrastructure/Persistence/` (`grep -rn Doctrine src/`).
 - [ ] Aucun `flush()` dans un repository — seul `MongoTransactional` flushe. Le transport de

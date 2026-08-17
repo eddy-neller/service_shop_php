@@ -16,7 +16,7 @@ use App\Domain\Customer\ValueObject\AddressId;
 use App\Domain\Customer\ValueObject\CustomerId;
 
 /**
- * Le monolithe faisait `unsetDefaultForOwner()` puis `markAsDefault()` : deux ecritures dont
+ * `unsetDefaultForOwner()` puis `markAsDefault()` feraient deux ecritures dont
  * PostgreSQL garantissait l'ordre et l'atomicite, la seconde protegee par un index unique
  * partiel. Ni l'un ni l'autre n'est reproductible ici — l'ODM n'ordonne pas les operations
  * d'un flush par intention, et un index partiel echouerait par intermittence selon que le

@@ -10,12 +10,6 @@ use Doctrine\ODM\MongoDB\Mapping\Attribute as MongoDB;
 /**
  * Representation persistee d'une categorie.
  *
- * L'arbre etait un *nested set* maintenu par Gedmo cote monolithe (colonnes lft/rgt/lvl).
- * Ici il est reduit a `parentId` + `level` denormalise : MongoDB n'a pas d'extension
- * equivalente, et un arbre de catalogue est assez petit pour que le maintien explicite
- * du niveau dans `MongoCategoryRepository` soit plus lisible qu'une renumerotation
- * d'intervalles.
- *
  * `hasChildren` n'est volontairement pas un champ : il se deduit de l'existence d'un
  * document portant `parentId = _id`. Le stocker creerait un second etat a maintenir.
  */

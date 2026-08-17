@@ -15,7 +15,7 @@ use RegexIterator;
  *
  * Le build casse des qu'un Model ou un VO est livre sans test, quel que soit le contexte.
  *
- * Contrairement au monolithe, ce service a **aplati** les sous-contextes : le catalogue vit
+ * Ce service a **aplati** les sous-contextes : le catalogue vit
  * en `src/Domain/Catalog/`, pas en `src/Domain/Shop/Catalog/`. Le mapping reste neanmoins
  * tolerant a un sous-contexte, pour le jour ou l'un d'eux en gagnerait un :
  *   src   : src/Domain/<Ctx>/<SousContexte?>/<Categorie>/<Nom>.php

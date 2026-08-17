@@ -21,7 +21,7 @@ use App\Domain\Ordering\ValueObject\CartLineQuantity;
 /**
  * Cree le panier au premier ajout.
  *
- * Le monolithe serialisait cette creation par un verrou pessimiste sur la ligne du client.
+ * Un verrou pessimiste sur la ligne du client serialiserait cette creation.
  * Ici, deux requetes concurrentes peuvent toutes deux ne rien trouver et construire un
  * panier : c'est l'index unique sur `customerId` qui rejette le perdant, dont la transaction
  * entiere est alors annulee. Le client rejoue et trouve le panier de l'autre.

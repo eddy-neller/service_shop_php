@@ -35,7 +35,7 @@ final class DisplayCustomerTest extends TestCase
     }
 
     /**
-     * Les adresses arrivent avec le client, dans le meme document : le monolithe faisait ici
+     * Les adresses arrivent avec le client, dans le meme document : cela evite
      * une seconde lecture. Le tri par date decroissante de sa vue est conserve.
      */
     public function testHandleReturnsTheCustomerWithItsAddressesNewestFirst(): void

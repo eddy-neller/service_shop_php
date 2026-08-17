@@ -15,7 +15,7 @@ use App\Domain\Customer\ValueObject\CustomerId;
 
 /**
  * La promotion d'une remplacante quand on supprime l'adresse par defaut vit desormais dans
- * `Customer::removeAddress()`. Le monolithe la faisait ici, en deux requetes
+ * `Customer::removeAddress()`, plutot qu'en deux requetes
  * (`findDefaultReplacementForOwner()` puis `save()`) : deux ecritures que MongoDB n'aurait
  * pas garanties ensemble hors du meme flush.
  */

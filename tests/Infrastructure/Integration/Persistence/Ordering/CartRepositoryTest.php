@@ -86,7 +86,7 @@ final class CartRepositoryTest extends MongoPersistenceTestCase
     }
 
     /**
-     * L'index unique remplace le verrou pessimiste que le monolithe prenait sur la ligne du
+     * L'index unique remplace un verrou pessimiste sur la ligne du
      * client avant toute creation. Deux paniers pour un meme proprietaire sont impossibles.
      */
     public function testACustomerCannotHaveTwoCarts(): void

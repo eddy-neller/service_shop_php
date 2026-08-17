@@ -354,7 +354,7 @@ jwt-test-keys: ## (Re)genere config/jwt/test/{private,public}.pem
 		chmod 644 config/jwt/test/private.pem config/jwt/test/public.pem"
 	@echo "$(GREEN)** Paire de test generee **$(RESET)"
 
-## Copie la cle PUBLIQUE de l'emetteur depuis le monolithe
+## Copie la cle PUBLIQUE de l'emetteur depuis service_identity
 .PHONY: jwt-public-key
 jwt-public-key: ## Copie la cle publique de service_identity (jamais la cle privee)
 	@cp ../service_identity/config/jwt/public.pem config/jwt/public.pem

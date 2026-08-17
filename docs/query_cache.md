@@ -100,10 +100,9 @@ marqueur, jamais sur ses événements un à un.
 `DisplayMyCustomerQuery` traduit le `sub` du jeton en `customerId`. Elle est rejouée **à chaque
 requête `/me`**, d'où un TTL de 24 h justifié par l'immutabilité de l'association.
 
-Le monolithe la cachait déjà ainsi — **sans que rien ne l'invalide**, faute d'événements côté
-`Customer` ; son docblock le signalait. C'est pour cela que `Customer` et `Address` émettent
-désormais des événements : `customer-of-user-{id}` est purgé dès qu'un fait du contexte survient.
-Sans lui, un client fraîchement provisionné resterait introuvable pendant une journée.
+Sans invalidation, un client fraîchement provisionné resterait introuvable pendant une journée.
+`Customer` et `Address` émettent donc des événements : `customer-of-user-{id}` est purgé dès qu'un
+fait du contexte survient.
 
 Les événements portent aussi `customer-{id}`, qui n'a pas encore de lecteur. Purger un tag inutilisé
 ne coûte rien, et rendre une query cachable plus tard devient une ligne plutôt qu'une enquête.

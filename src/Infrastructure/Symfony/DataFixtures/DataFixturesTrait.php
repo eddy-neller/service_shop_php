@@ -12,7 +12,7 @@ use Symfony\Component\String\Slugger\AsciiSlugger;
 /**
  * Outillage commun aux fixtures.
  *
- * Version reduite de celle du monolithe : les helpers `getUsers()` / `getTestUsers()`
+ * Les helpers `getUsers()` / `getTestUsers()`
  * n'ont pas suivi, ce service n'ayant pas d'utilisateurs — l'identite vient du token.
  */
 trait DataFixturesTrait

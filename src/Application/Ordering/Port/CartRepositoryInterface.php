@@ -10,7 +10,7 @@ use App\Domain\Ordering\ValueObject\CartId;
 use App\Domain\Ordering\ValueObject\CartLineId;
 
 /**
- * Le `findByOwnerForUpdate()` du monolithe n'est **pas** porté, et ne doit pas revenir.
+ * `findByOwnerForUpdate()` n'est **pas** expose et ne doit pas revenir.
  *
  * Il prenait un verrou pessimiste sur la ligne du client pour servir de mutex a la creation
  * du panier, puis verrouillait le panier lui-meme. MongoDB n'ayant pas de `SELECT … FOR

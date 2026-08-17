@@ -187,7 +187,7 @@ abstract class BaseTest extends ApiTestCase
      * Forge un token localement, sans que le service emetteur tourne.
      *
      * C'est la contrepartie de l'autonomie exigee par AGENTS.md : la suite ne peut pas
-     * dependre d'un `POST /api/auth/login` sur `service_identity`, sinon `GET /health`
+     * dependre d'un appel a un endpoint de login, sinon `GET /health`
      * serait la seule chose que ce depot sait tester seul. La signature utilise la paire
      * versionnee `config/jwt/test/`, declaree sous `when@test` uniquement — dev et prod
      * restent structurellement incapables d'emettre.

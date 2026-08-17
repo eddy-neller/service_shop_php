@@ -12,8 +12,8 @@ use Doctrine\ODM\MongoDB\Mapping\Attribute as MongoDB;
 /**
  * Representation persistee d'un panier.
  *
- * `cart_customer_uniq` porte a lui seul la garantie « un panier par client ». Le monolithe
- * la tenait par un verrou pessimiste pris sur la ligne du client avant toute creation ;
+ * `cart_customer_uniq` porte a lui seul la garantie « un panier par client ». Un verrou
+ * pessimiste pris sur la ligne du client avant toute creation serait une autre approche ;
  * MongoDB n'ayant pas de `SELECT … FOR UPDATE`, c'est l'index qui arbitre : deux requetes
  * concurrentes peuvent toutes deux ne rien trouver et construire un panier, le perdant voit
  * sa transaction entiere annulee.

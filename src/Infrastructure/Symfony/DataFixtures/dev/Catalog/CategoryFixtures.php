@@ -13,15 +13,15 @@ use Faker\Factory;
 use Ramsey\Uuid\Uuid;
 
 /**
- * Arbre de categories : 2 racines, puis 4, 8 et 16 — meme forme que cote monolithe.
+ * Arbre de categories : 2 racines, puis 4, 8 et 16.
  *
  * Deux differences imposees par MongoDB, et qui meritent d'etre vues :
  *
- * 1. Le `level` est ecrit ici. Cote monolithe, le nested set de Gedmo le calculait au
+ * 1. Le `level` est ecrit ici : le nested set de Gedmo le calculerait au
  *    flush ; ici c'est `MongoCategoryRepository::save()` qui s'en charge — mais une
  *    fixture ecrit des documents, pas des agregats, donc elle doit le poser elle-meme.
  * 2. Les titres sont tires en `unique()` : la collection porte un index unique sur
- *    `title`, la ou le monolithe ne contraignait que le `slug`.
+ *    `title`, au-dela du seul `slug`.
  */
 class CategoryFixtures extends Fixture implements FixtureGroupInterface
 {

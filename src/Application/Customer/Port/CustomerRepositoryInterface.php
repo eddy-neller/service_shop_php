@@ -13,8 +13,7 @@ use App\Domain\Customer\ValueObject\UserAccountId;
  * Le seul depot du contexte : les adresses vivent **dans** l'agregat `Customer`, il n'y a
  * donc pas d'`AddressRepositoryInterface`.
  *
- * Ses cinq methodes du monolithe ont ete absorbees par l'agregat, et ce n'est pas un choix
- * de style : `countByOwnerForUpdate()` s'appuyait sur un `SELECT … FOR UPDATE` que MongoDB
+ * Ce n'est pas un choix de style : `countByOwnerForUpdate()` s'appuyait sur un `SELECT … FOR UPDATE` que MongoDB
  * n'a pas. Reimplementee ici, elle aurait compte sans verrouiller — meme signature, meme
  * nom rassurant, et deux ecritures concurrentes auraient produit six adresses sans qu'aucune
  * erreur n'apparaisse nulle part. Ne pas la faire revenir.
@@ -22,7 +21,7 @@ use App\Domain\Customer\ValueObject\UserAccountId;
 interface CustomerRepositoryInterface
 {
     /**
-     * `username` a disparu de la liste du monolithe : ce tri s'appuyait sur une jointure DQL
+     * `username` ne fait pas partie des criteres : ce tri s'appuyait sur une jointure DQL
      * vers la table des comptes utilisateurs, qui vit desormais dans un autre service et une
      * autre base. Le read model n'expose de toute facon pas ce champ — seul le tri est perdu.
      */

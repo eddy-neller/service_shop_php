@@ -15,7 +15,7 @@ use App\Domain\Customer\Model\Customer;
 use App\Domain\Customer\ValueObject\UserAccountId;
 
 /**
- * Le monolithe chargeait ici l'utilisateur pour verifier son existence. Cette verification
+ * Charger l'utilisateur pour verifier son existence introduirait un couplage. Cette verification
  * a disparu, et c'est deliberé :
  *
  * - elle ne lisait **aucun** champ de l'utilisateur — `Customer` ne copie rien de `User`,

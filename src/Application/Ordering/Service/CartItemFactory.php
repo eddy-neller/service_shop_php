@@ -20,7 +20,7 @@ use App\Domain\SharedKernel\ValueObject\Money;
  * quels paniers purger apres un changement de prix.
  *
  * Une ligne dont le produit a disparu est **ignoree silencieusement**, comportement repris
- * tel quel du monolithe. Attention toutefois : la-bas une cle etrangere en cascade retirait
+ * tel quel. Attention toutefois : une cle etrangere en cascade retirerait
  * la ligne avec le produit. Ici il n'y en a plus, donc la ligne survit indefiniment dans le
  * document, invisible a l'API et jamais nettoyee.
  */

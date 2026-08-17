@@ -26,7 +26,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
 /**
  * L'appartenance n'est plus portee par un voter.
  *
- * Le monolithe gardait chaque operation d'item par `is_granted('shop_address:item:*', object)`,
+ * Garder chaque operation d'item par `is_granted('shop_address:item:*', object)`
  * adosse a `ShopAddressVoter` qui remontait de l'adresse au client par Doctrine. Les adresses
  * etant desormais **dans** le document du client, la question ne se pose plus : chaque State
  * resout le client courant puis lui demande son adresse. Celle d'autrui est introuvable, donc

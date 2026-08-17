@@ -1,5 +1,5 @@
 security:
-    # Repris a l'identique du monolithe (api/config/packages/security.yaml:8-11).
+    # Configuration de validation JWT.
     # Indispensable : sans cette hierarchie, un ROLE_ADMIN present dans le token
     # n'impliquerait pas ROLE_USER cote shop.
     role_hierarchy:

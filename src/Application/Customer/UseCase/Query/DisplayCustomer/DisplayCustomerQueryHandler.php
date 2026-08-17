@@ -14,7 +14,7 @@ use App\Domain\Customer\ValueObject\CustomerId;
 
 /**
  * Les adresses ne demandent plus de seconde lecture : elles arrivent avec le client, dans le
- * meme document. Le monolithe faisait ici un `listByOwner()` supplementaire, borne a
+ * meme document. Un `listByOwner()` supplementaire serait borne a
  * `MAX_ADDRESSES` et trie par date decroissante — ce tri est conserve pour que la vue reste
  * identique.
  */

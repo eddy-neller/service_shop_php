@@ -7,7 +7,7 @@ namespace App\Tests\Infrastructure\Integration\Persistence\Catalog;
 use App\Tests\Infrastructure\Integration\Persistence\MongoPersistenceTestCase;
 
 /**
- * Version MongoDB du test repris du monolithe.
+ * Verification du repository MongoDB.
  *
  * Le `countNbProductByCategory()` de l'ancien repository ORM n'existe plus : la seule
  * lecture qui compte des produits par categorie passe desormais par le filtre

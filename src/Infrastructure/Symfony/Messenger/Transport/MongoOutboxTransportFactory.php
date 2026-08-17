@@ -16,7 +16,7 @@ use Symfony\Component\Messenger\Transport\TransportInterface;
  *
  * Le nom de file est la seule chose que porte la DSN : l'outbox et sa file d'echec partagent
  * la collection `domain_event_outbox` et ne different que par ce champ, comme le faisaient
- * `queue_name=domain_events` et `queue_name=failed_domain_events` cote monolithe. Aucune
+ * `queue_name=domain_events` et `queue_name=failed_domain_events`. Aucune
  * coordonnee de serveur n'y figure — la connexion est celle de l'ODM.
  *
  * Enregistree par autoconfiguration (`messenger.transport_factory`) : aucun tag a ecrire.

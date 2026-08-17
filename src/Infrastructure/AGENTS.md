@@ -3,11 +3,10 @@
 > **But** : implémenter les Ports Application et encapsuler les frameworks.
 > Couche `src/Infrastructure/`. Règles transverses : voir `AGENTS.md` racine.
 >
-> **Ce fichier décrit `service_shop`, pas le monolithe.** La persistance est MongoDB via Doctrine
+> **Ce fichier décrit `service_shop`.** La persistance est MongoDB via Doctrine
 > **ODM** ; il n'y a ni ORM, ni migration, ni clé étrangère, ni broker. Redis est autorisé seulement
-> pour le cache applicatif dédié et partagé entre les replicas de ce service. Une règle reprise
-> du monolithe et parlant de DQL, de `Paginator`, de `#[ORM\Index]` ou d'un `OneToMany` inverse ne
-> s'applique pas ici — elle a été retirée volontairement.
+> pour le cache applicatif dédié et partagé entre les replicas de ce service. DQL, `Paginator`,
+> `#[ORM\Index]` et un `OneToMany` inverse ne s'appliquent pas ici.
 
 ---
 
@@ -91,7 +90,7 @@ peut être supprimée directement après le commit, sans comptage ni worker.
 
 ## Persistance MongoDB
 
-### Le contrat des repositories diffère du monolithe
+### Contrat des repositories
 
 - `save()` et `delete()` se contentent de `persist()` / `remove()` ;
 - le flush unique est déclenché par `MongoTransactional::transactional()` ;
@@ -158,8 +157,8 @@ rejoint le flush unique de `MongoTransactional` et commite avec l'agrégat. Son 
 flush — `insertOne()`, ou un `SenderInterface` qui écrit tout de suite — s'engagerait seule et
 survivrait au rollback, **sans lever d'erreur**.
 
-C'est la différence structurelle avec le monolithe, où `doctrine://` rejoint la transaction ouverte
-gratuitement parce qu'il emprunte la connexion DBAL courante. Ne pas transposer ce raisonnement ici.
+Ne pas transposer la logique d'un transport SQL : `doctrine://` rejoint la transaction ouverte parce
+qu'il emprunte la connexion DBAL courante.
 
 `enqueueAndFlush()` **flushe**, seule exception à la règle « seul `MongoTransactional` flushe ». Il ne sert qu'aux chemins de reprise, exécutés hors transaction métier : retry différé,
 copie vers `failed_domain_events`, `messenger:failed:retry`. Le chemin nominal ne l'emprunte pas.

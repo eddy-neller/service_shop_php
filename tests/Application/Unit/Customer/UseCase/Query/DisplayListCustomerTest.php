@@ -43,7 +43,7 @@ final class DisplayListCustomerTest extends TestCase
     }
 
     /**
-     * Le tri par defaut du monolithe est conserve : sans `orderBy`, les plus recents d'abord.
+     * Sans `orderBy`, les plus recents sont affiches d'abord.
      */
     public function testHandleFallsBackToNewestFirst(): void
     {

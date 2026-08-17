@@ -153,8 +153,7 @@ private function touch(\DateTimeImmutable $now): void
 - Tests unitaires purs : pas de kernel Symfony, pas de DB, pas de services framework.
 - Pattern : créer VOs/Agrégats → appeler méthodes métier → vérifier état, events, exceptions.
 - Suites : `domain.catalog`, `domain.shared` (cf. `AGENTS.md` racine).
-- Arborescence des tests : ce service a **aplati** les sous-contextes du monolithe, donc le chemin
-  se reflète directement (`src/Domain/<Context>/ValueObject/<Vo>.php` →
+- Arborescence des tests : le chemin se reflète directement (`src/Domain/<Context>/ValueObject/<Vo>.php` →
   `tests/Domain/<Context>/Unit/ValueObject/<Vo>Test.php`). `DomainTestCoverageTest` (suite
   `domain.shared`) vérifie cette correspondance pour chaque `Model` et chaque `ValueObject`, et
   casse le build si l'un d'eux est livré sans test.

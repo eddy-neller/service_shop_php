@@ -18,7 +18,7 @@ use App\Application\Shared\CQRS\Query\CacheableQueryInterface;
  * retentera en base. C'est ce qui rend supportable la fenetre pendant laquelle le relais
  * n'a pas encore depose le client.
  *
- * Le monolithe portait ici un avertissement : son tag n'etait invalide par rien, parce que
+ * Un tag non invalide ne permettrait pas de garantir la fraicheur de la lecture, parce que
  * `DomainEventCacheTags` n'y connaissait que les evenements du contexte User. **Cet
  * avertissement est leve** : les evenements de `Customer` portent leur `userAccountId`, et
  * `DomainEventCacheTags` purge `customer-of-user-{id}` a chaque fait du contexte.

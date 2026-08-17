@@ -13,7 +13,7 @@ use App\Domain\Customer\ValueObject\CustomerId;
 
 /**
  * L'adresse est cherchee **dans** son proprietaire : celle d'autrui est donc introuvable,
- * pas interdite. Le monolithe repondait 403 via `ShopAddressVoter` ; ici c'est 404, ce qui
+ * pas interdite. Ici c'est 404, ce qui
  * supprime au passage l'oracle d'existence que le 403 offrait.
  */
 final readonly class DisplayAddressQueryHandler implements QueryHandlerInterface

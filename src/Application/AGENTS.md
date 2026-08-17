@@ -63,8 +63,7 @@ Un Port représente une dépendance externe ou technique que l'Application doit 
 - Mantra : **« toujours via le Bus, jamais via le Handler »**.
 - **Aucun mapping manuel** Command → Handler : enregistrement automatique par Messenger et convention obligatoire.
   - `FooCommand` → `FooCommandHandler`, `BarQuery` → `BarQueryHandler`.
-  - Les handlers implémentent leur interface marqueur et exposent `handle()` ; le wiring Infrastructure les limite à `command.bus` ou `query.bus`. Voir `docs/CQRS_messenger.md`. (`HandlerConventionTest` et la suite `appli.shared` existent côté
-monolithe, **pas ici** : la convention n'est vérifiée par aucun test dans ce dépôt.)
+  - Les handlers implémentent leur interface marqueur et exposent `handle()` ; le wiring Infrastructure les limite à `command.bus` ou `query.bus`. Voir `docs/CQRS_messenger.md`. (`HandlerConventionTest` et la suite `appli.shared` vérifient cette convention dans ce dépôt.)
 
 ### Middlewares CQRS
 
@@ -95,8 +94,7 @@ dans l'outbox **en rejoignant le flush courant** : l'agrégat et ses événement
 ensemble, ou pas du tout. Publier après le commit rouvrirait la fenêtre où l'écriture métier est visible
 alors que ses réactions sont définitivement perdues.
 
-> Attention en relisant du code du monolithe : là-bas, le bus dispatche sur `event.bus` et le transport
-> `doctrine://` émet son INSERT sur la connexion transactionnelle courante. Ici, l'adapter `persist()` un
+> L'adapter `persist()` un
 > document dans le `DocumentManager` — une transaction MongoDB appartient à la session portée par le
 > flush de l'ODM, et une écriture émise à côté survivrait au rollback sans lever d'erreur.
 

@@ -24,7 +24,7 @@
          n'exister que la-bas — une suite absente d'ici ne serait jouee nulle part
          en CI, et l'oubli passerait pour un run vert. -->
     <testsuites>
-        <!-- Suites a ports mockes, reprises telles quelles du monolithe. Si l'une
+        <!-- Suites a ports mockes. Si l'une
              d'elles doit etre retouchee pour passer au vert, c'est que la migration
              vers MongoDB a fuite hors d'Infrastructure/. -->
         <testsuite name="domain.catalog">

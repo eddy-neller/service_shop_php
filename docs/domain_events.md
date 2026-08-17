@@ -8,14 +8,9 @@ d'atomicité et la déduplication des redélivrances.
 Pour la mécanique CQRS elle-même (bus de commandes/requêtes, middlewares, adapters), voir
 [`CQRS_messenger.md`](CQRS_messenger.md).
 
-## Ce qui change par rapport à service identity
+## La contrainte transactionnelle MongoDB
 
-L'outbox de `service_identity` **ne pouvait pas être reprise**, et pas seulement parce que sa table
-est relationnelle. Sur Doctrine ORM, le transport `doctrine://` émet son `INSERT` sur la connexion
-DBAL courante : appelé depuis un callback transactionnel, il rejoint la transaction ouverte **sans
-que personne ait rien à faire**. L'atomicité était gratuite.
-
-Rien de tel ici. Une transaction MongoDB appartient à la session portée par le flush de l'ODM
+Une transaction MongoDB appartient à la session portée par le flush de l'ODM
 (`MongoTransactional`, `['withTransaction' => true]`). Une écriture émise par le pilote à côté de ce
 flush — `insertOne()`, ou un `SenderInterface` qui écrit immédiatement — s'engage seule et
 **survivrait au rollback de l'agrégat**, sans lever la moindre erreur.
@@ -305,9 +300,8 @@ routing:
 
 ### Les tests n'ont pas de transport `sync://`
 
-Le monolithe bascule `domain_events` sur `sync://` en environnement de test, pour que les réactions
-s'exécutent en ligne. Ça n'aurait **aucun effet ici** : `sync://` agit au `send()`, et le chemin
-nominal n'en émet pas. Les événements iraient quand même dans la collection.
+`sync://` agit au `send()`, et le chemin nominal n'en émet pas. Les événements iraient quand même
+dans la collection.
 
 Les tests d'API laissent donc les événements s'accumuler dans l'outbox — `BaseTest` les purge avec
 le reste. Le transport est couvert par `DomainEventOutboxTest`.

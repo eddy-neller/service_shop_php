@@ -14,7 +14,7 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 /**
  * Ecrit les Domain Events dans l'outbox MongoDB.
  *
- * Contrairement au monolithe, la publication ne passe **pas** par un dispatch Messenger.
+ * La publication ne passe **pas** par un dispatch Messenger.
  * Sur Doctrine ORM, le `SendMessageMiddleware` finissait par un INSERT emis sur la connexion
  * courante, donc dans la transaction ouverte : l'atomicite venait gratuitement.
  *
