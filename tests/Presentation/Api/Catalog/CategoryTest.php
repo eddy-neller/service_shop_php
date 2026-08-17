@@ -140,7 +140,7 @@ final class CategoryTest extends BaseTest
                 'createdAt',
             ],
             'hasNotKey' => [
-                'parent', // pas de parent donc level 0
+                'parent', // pas de parent
                 'children',
             ],
         ];

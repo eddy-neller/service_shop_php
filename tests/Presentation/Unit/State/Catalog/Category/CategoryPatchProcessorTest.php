@@ -63,6 +63,7 @@ final class CategoryPatchProcessorTest extends TestCase
                 $this->assertSame($input->description, $command->description);
                 $this->assertSame($categoryId, $command->categoryId);
                 $this->assertSame($input->parent->id, $command->parentId);
+                $this->assertTrue($command->parentProvided);
 
                 return $output;
             });
@@ -71,6 +72,48 @@ final class CategoryPatchProcessorTest extends TestCase
 
         $this->assertInstanceOf(CategoryResource::class, $result);
         $this->assertSame('Updated category', $result->title);
+    }
+
+    public function testProcessPreservesAnExplicitParentRemoval(): void
+    {
+        $input = new CategoryPatchInput();
+        $input->parent = null;
+
+        $output = $this->createCategoryTree();
+        $categoryId = '550e8400-e29b-41d4-a716-446655440000';
+
+        $this->commandBus->expects($this->once())
+            ->method('dispatch')
+            ->willReturnCallback(function ($command) use ($output): CategoryItem {
+                $this->assertInstanceOf(UpdateCategoryByAdminCommand::class, $command);
+                $this->assertNull($command->parentId);
+                $this->assertTrue($command->parentProvided);
+
+                return $output;
+            });
+
+        $this->processor->process($input, $this->operation, ['id' => $categoryId]);
+    }
+
+    public function testProcessDoesNotMoveTheCategoryWhenParentIsOmitted(): void
+    {
+        $input = new CategoryPatchInput();
+        $input->title = 'Updated category';
+
+        $output = $this->createCategoryTree();
+        $categoryId = '550e8400-e29b-41d4-a716-446655440000';
+
+        $this->commandBus->expects($this->once())
+            ->method('dispatch')
+            ->willReturnCallback(function ($command) use ($output): CategoryItem {
+                $this->assertInstanceOf(UpdateCategoryByAdminCommand::class, $command);
+                $this->assertNull($command->parentId);
+                $this->assertFalse($command->parentProvided);
+
+                return $output;
+            });
+
+        $this->processor->process($input, $this->operation, ['id' => $categoryId]);
     }
 
     public function testProcessThrowsLogicExceptionForInvalidInput(): void

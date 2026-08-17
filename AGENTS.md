@@ -166,8 +166,8 @@ Le bundle ODM fournit sa propre chaine (`doctrine:mongodb:fixtures:load`, base
 Deux points a retenir avant d'en ecrire d'autres :
 
 - **Une fixture ecrit des documents, pas des agregats.** Elle court-circuite donc les repositories,
-  et doit poser elle-meme ce qu'ils calculent : le `level` des categories et le `nbProduct`
-  denormalise. Une fixture qui les oublie produit une base incoherente qu'aucun test ne rattrape.
+  et doit poser elle-meme le `nbProduct` denormalise. Gedmo Tree calcule `path` et `level` au
+  flush a partir de la relation `parent` ; une fixture ne doit pas les ecrire elle-meme.
 - Les collections portent un index unique sur `title` **et** sur `slug`. Les titres sont tires en
   `unique()`, et `DataFixturesTrait::uniqueSlug()` suffixe les collisions de slug — sinon la fixture
   echouerait une fois sur dix, au hasard du tirage.
@@ -180,9 +180,9 @@ compilation du conteneur apres un `composer install --no-dev`.
 
 MongoDB n'a ni cle etrangere ni cascade. Une categorie ne peut donc etre supprimee que si elle ne
 porte aucun produit et n'a aucun enfant : `Category::delete()` fait respecter cet invariant avant
-que le repository ne retire son seul document. Le `level` des categories etait maintenu par le
-nested set de Gedmo ; il est desormais calcule dans `save()`, et propage a la descendance quand une
-categorie change de parent.
+que le repository ne retire son seul document. Gedmo Tree maintient le materialized path, le niveau
+et la propagation vers les descendants pendant le flush transactionnel. Le parent est une relation
+ODM `ReferenceOne` stockee comme identifiant ; il n'existe pas de second champ `parentId` persiste.
 
 ---
 

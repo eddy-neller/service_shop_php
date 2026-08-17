@@ -89,6 +89,14 @@ use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
                         ],
                     ),
                     new Model\Parameter(
+                        name: 'root',
+                        in: 'query',
+                        required: false,
+                        schema: [
+                            'type' => 'boolean',
+                        ],
+                    ),
+                    new Model\Parameter(
                         name: 'order',
                         in: 'query',
                         required: false,

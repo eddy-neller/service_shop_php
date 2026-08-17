@@ -29,5 +29,5 @@ final class CategoryPatchInput
     public ?string $description = null;
 
     #[Groups(['shop_category:write'])]
-    public ?CategoryResource $parent = null;
+    public ?CategoryResource $parent;
 }

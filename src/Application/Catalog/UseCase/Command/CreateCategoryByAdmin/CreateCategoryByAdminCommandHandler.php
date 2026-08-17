@@ -37,7 +37,7 @@ final readonly class CreateCategoryByAdminCommandHandler implements CommandHandl
         $parentId = null !== $command->parentId ? CategoryId::fromString($command->parentId) : null;
         $slug = $this->slugGenerator->generate($title->toString());
 
-        return $this->transactional->transactional(function () use ($id, $title, $description, $parentId, $slug): CategoryItem {
+        $this->transactional->transactional(function () use ($id, $title, $description, $parentId, $slug): void {
             if (null !== $this->repository->findByTitle($title)) {
                 throw new CategoryTitleAlreadyUsedException();
             }
@@ -60,17 +60,17 @@ final readonly class CreateCategoryByAdminCommandHandler implements CommandHandl
 
             $this->repository->save($category);
             $this->eventBus->publishAll($category->releaseEvents());
-
-            $categoryTree = $this->repository->findTreeById($id);
-            if (null === $categoryTree) {
-                throw new CategoryNotFoundException();
-            }
-
-            return CategoryItem::fromCategory(
-                category: $categoryTree['category'],
-                parent: $categoryTree['parent'],
-                children: $categoryTree['children'],
-            );
         });
+
+        $categoryTree = $this->repository->findTreeById($id);
+        if (null === $categoryTree) {
+            throw new CategoryNotFoundException();
+        }
+
+        return CategoryItem::fromCategory(
+            category: $categoryTree['category'],
+            parent: $categoryTree['parent'],
+            children: $categoryTree['children'],
+        );
     }
 }

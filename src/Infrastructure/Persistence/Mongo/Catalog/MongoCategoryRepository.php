@@ -71,29 +71,15 @@ final readonly class MongoCategoryRepository implements CategoryRepositoryInterf
         ];
     }
 
-    /**
-     * Ne flushe pas : voir `MongoTransactional`.
-     *
-     * `level` est calcule ici, et nulle part ailleurs. Un nested set Gedmo s'en chargerait,
-     * mais il n'a pas d'equivalent ODM dans cette stack, et un
-     * arbre de catalogue est assez peu profond pour qu'un calcul explicite soit plus
-     * lisible qu'une renumerotation d'intervalles.
-     */
+    /** Ne flushe pas : Gedmo Tree rejoint le flush unique de `MongoTransactional`. */
     public function save(DomainCategory $category): void
     {
         $document = $this->mapper->toDocument($category, $this->findDocument($category->getId()));
-
-        $previousLevel = $document->level;
-        $document->level = $this->levelOf($category->getParentId());
+        $document->parent = null === $category->getParentId()
+            ? null
+            : $this->documentManager->getReference(CategoryDocument::class, $category->getParentId()->toString());
 
         $this->documentManager->persist($document);
-
-        // Deplacer une categorie decale le niveau de toute sa descendance. Sans cette
-        // propagation, le filtre `?level=` renverrait des resultats faux des le premier
-        // deplacement, sans qu'aucune erreur ne le signale.
-        if ($previousLevel !== $document->level) {
-            $this->shiftDescendantLevels($document->id, $document->level);
-        }
     }
 
     public function delete(DomainCategory $category): void
@@ -132,14 +118,12 @@ final readonly class MongoCategoryRepository implements CategoryRepositoryInterf
             return null;
         }
 
-        $parentDocument = null === $document->parentId
-            ? null
-            : $this->documentManager->find(CategoryDocument::class, $document->parentId);
+        $parentDocument = $document->parent;
 
         $childDocuments = [];
         $children = $this->documentManager
             ->getRepository(CategoryDocument::class)
-            ->findBy(['parentId' => $document->id]);
+            ->findBy(['parent' => $document]);
 
         foreach ($children as $child) {
             if ($child instanceof CategoryDocument) {
@@ -163,7 +147,7 @@ final readonly class MongoCategoryRepository implements CategoryRepositoryInterf
             'category' => $this->mapper->toDomain($document, hasChildren: [] !== $children),
             'parent' => $parentDocument instanceof CategoryDocument
                 // La categorie courante est necessairement un enfant direct de ce parent :
-                // inutile de refaire un `count(parentId = parent.id)` uniquement pour
+                // inutile de refaire un `count(parent = parent.id)` uniquement pour
                 // recalculer une information deja prouvee par la relation chargee ci-dessus.
                 ? $this->mapper->toDomain($parentDocument, hasChildren: true)
                 : null,
@@ -173,13 +157,13 @@ final readonly class MongoCategoryRepository implements CategoryRepositoryInterf
 
     private function toDomainWithChildren(CategoryDocument $document): DomainCategory
     {
-        return $this->mapper->toDomain($document, hasChildren: $this->hasChildren($document->id));
+        return $this->mapper->toDomain($document, hasChildren: $this->hasChildren($document));
     }
 
-    private function hasChildren(string $categoryId): bool
+    private function hasChildren(CategoryDocument $document): bool
     {
         $count = $this->createQueryBuilder()
-            ->field('parentId')->equals($categoryId)
+            ->field('parent')->references($document)
             ->count()
             ->getQuery()
             ->execute();
@@ -203,45 +187,27 @@ final readonly class MongoCategoryRepository implements CategoryRepositoryInterf
 
         $children = $this->documentManager
             ->getRepository(CategoryDocument::class)
-            ->findBy(['parentId' => ['$in' => $ids]]);
+            ->findBy(['parent' => ['$in' => $ids]]);
 
         $parents = [];
         foreach ($children as $child) {
-            if ($child instanceof CategoryDocument && null !== $child->parentId) {
-                $parents[$child->parentId] = true;
+            if ($child instanceof CategoryDocument && null !== $child->parent) {
+                $parents[$child->parent->id] = true;
             }
         }
 
         return array_keys($parents);
     }
 
-    private function levelOf(?CategoryId $parentId): int
+    public function isDescendantOf(CategoryId $candidateId, CategoryId $ancestorId): bool
     {
-        if (null === $parentId) {
-            return 0;
-        }
+        $candidate = $this->findDocument($candidateId);
+        $ancestor = $this->findDocument($ancestorId);
 
-        $parent = $this->documentManager->find(CategoryDocument::class, $parentId->toString());
-
-        return $parent instanceof CategoryDocument ? $parent->level + 1 : 0;
-    }
-
-    private function shiftDescendantLevels(string $categoryId, int $parentLevel): void
-    {
-        $children = $this->documentManager
-            ->getRepository(CategoryDocument::class)
-            ->findBy(['parentId' => $categoryId]);
-
-        foreach ($children as $child) {
-            if (!$child instanceof CategoryDocument) {
-                continue;
-            }
-
-            $child->level = $parentLevel + 1;
-            $this->documentManager->persist($child);
-
-            $this->shiftDescendantLevels($child->id, $child->level);
-        }
+        return null !== $candidate
+            && null !== $ancestor
+            && $candidate->id !== $ancestor->id
+            && str_starts_with($candidate->path, $ancestor->path);
     }
 
     private function findDocument(CategoryId $id): ?CategoryDocument
@@ -268,7 +234,11 @@ final readonly class MongoCategoryRepository implements CategoryRepositoryInterf
 
         $parent = $filters['parent'] ?? null;
         if (is_string($parent) && Uuid::isValid($parent)) {
-            $builder->field('parentId')->equals($parent);
+            $builder->field('parent')->references($this->documentManager->getReference(CategoryDocument::class, $parent));
+        }
+
+        if (filter_var($filters['root'] ?? null, FILTER_VALIDATE_BOOL)) {
+            $builder->field('parent')->equals(null);
         }
 
         return $builder;

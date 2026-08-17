@@ -24,5 +24,8 @@ interface CategoryRepositoryInterface
 
     public function findByTitle(CategoryTitle $title): ?Category;
 
+    /** Returns true when $candidateId is below $ancestorId in the category tree. */
+    public function isDescendantOf(CategoryId $candidateId, CategoryId $ancestorId): bool;
+
     public function findTreeById(CategoryId $id): ?array;
 }

@@ -15,11 +15,10 @@ use Ramsey\Uuid\Uuid;
 /**
  * Arbre de categories : 2 racines, puis 4, 8 et 16.
  *
- * Deux differences imposees par MongoDB, et qui meritent d'etre vues :
+ * Deux proprietes du jeu de fixtures meritent d'etre vues :
  *
- * 1. Le `level` est ecrit ici : le nested set de Gedmo le calculerait au
- *    flush ; ici c'est `MongoCategoryRepository::save()` qui s'en charge — mais une
- *    fixture ecrit des documents, pas des agregats, donc elle doit le poser elle-meme.
+ * 1. Gedmo Tree calcule `path` et `level` au flush, y compris pour les documents
+ *    ecrits directement par une fixture.
  * 2. Les titres sont tires en `unique()` : la collection porte un index unique sur
  *    `title`, au-dela du seul `slug`.
  */
@@ -56,7 +55,6 @@ class CategoryFixtures extends Fixture implements FixtureGroupInterface
                 $category = $this->createCategory(
                     title: $faker->unique()->company(),
                     description: $faker->text(),
-                    level: $level,
                     parent: $parent,
                     usedSlugs: $usedSlugs,
                 );
@@ -79,7 +77,6 @@ class CategoryFixtures extends Fixture implements FixtureGroupInterface
     private function createCategory(
         string $title,
         string $description,
-        int $level,
         ?CategoryDocument $parent,
         array &$usedSlugs,
     ): CategoryDocument {
@@ -90,8 +87,7 @@ class CategoryFixtures extends Fixture implements FixtureGroupInterface
         $category->title = $title;
         $category->description = $description;
         $category->slug = $this->uniqueSlug($title, $usedSlugs);
-        $category->parentId = $parent?->id;
-        $category->level = $level;
+        $category->parent = $parent;
         $category->nbProduct = 0;
         $category->createdAt = $timestamps['createdAt'];
         $category->updatedAt = $timestamps['updatedAt'];

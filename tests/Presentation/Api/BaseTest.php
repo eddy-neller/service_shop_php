@@ -387,8 +387,8 @@ abstract class BaseTest extends ApiTestCase
      *
      * Le seed passe par les repositories et `MongoTransactional`, pas par des documents
      * ecrits a la main : c'est le chemin reel des cas d'usage, donc le seul qui exerce le
-     * mapping et le calcul du `level`. Les parents sont sauves avant leurs enfants, sans
-     * quoi `save()` calculerait un niveau faux.
+     * mapping et le calcul Gedmo de `path` et `level`. Les parents sont sauves avant leurs
+     * enfants afin que leurs chemins soient disponibles dans le meme flush.
      *
      * Trois contraintes dictent sa forme, et il faut les relire avant de le reduire :
      *

@@ -24,7 +24,7 @@ final readonly class CategoryMapper
             slug: Slug::fromString($document->slug),
             createdAt: $document->createdAt,
             updatedAt: $document->updatedAt,
-            parentId: null === $document->parentId ? null : CategoryId::fromString($document->parentId),
+            parentId: null === $document->parent ? null : CategoryId::fromString($document->parent->id),
             description: CategoryDescription::fromNullableString($document->description),
             productCount: $document->nbProduct,
             level: $document->level,
@@ -32,10 +32,7 @@ final readonly class CategoryMapper
         );
     }
 
-    /**
-     * `level` n'est pas ecrit ici : il depend du parent, donc d'une lecture de la
-     * collection. C'est `MongoCategoryRepository::save()` qui le calcule.
-     */
+    /** Gedmo Tree maintient `path` et `level` au flush. */
     public function toDocument(DomainCategory $category, ?CategoryDocument $document = null): CategoryDocument
     {
         if (null === $document) {
@@ -46,7 +43,6 @@ final readonly class CategoryMapper
         $document->title = $category->getTitle()->toString();
         $document->description = $category->getDescription()?->toString();
         $document->slug = $category->getSlug()->toString();
-        $document->parentId = $category->getParentId()?->toString();
         $document->nbProduct = $category->getProductCount();
         $document->createdAt = $category->getCreatedAt();
         $document->updatedAt = $category->getUpdatedAt();

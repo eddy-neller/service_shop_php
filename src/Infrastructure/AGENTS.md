@@ -101,22 +101,17 @@ Détail et garde-fou : [`docs/src/Infrastructure/Persistence/Mongo/MongoTransact
 
 ### Ce que la base ne fait plus pour nous
 
-MongoDB n'a ni clé étrangère, ni cascade, ni nested set. La suppression d'une catégorie est donc
-autorisée par l'agrégat uniquement si elle est vide et sans enfant ; le repository retire alors son
-seul document. Les deux invariants qui nécessitent encore du code explicite sont :
+MongoDB n'a ni clé étrangère, ni cascade. La suppression d'une catégorie est donc autorisée par
+l'agrégat uniquement si elle est vide et sans enfant ; le repository retire alors son seul document.
+Gedmo Tree maintient le materialized path, le `level` et la propagation des descendants dans le flush
+unique de `MongoTransactional`. Le parent est une `ReferenceOne` ODM stockée comme identifiant ; ne
+pas réintroduire un champ persistant `parentId` en parallèle. L'invariant qui nécessite encore du
+code explicite est :
 
-- **le `level` d'une catégorie** — calculé dans `save()`, et propagé à toute la descendance quand une
-  catégorie change de parent (`shiftDescendantLevels()`) ;
 - **le `nbProduct` dénormalisé** — maintenu par le **cas d'usage** (`increaseProductCount()` /
   `decreaseProductCount()`), jamais par le repository. Tout code qui crée des produits hors use case
   (un seed, une commande) doit l'incrémenter lui-même, sinon le premier `DELETE` échoue sur
   « Product count cannot be negative ».
-
-### Les requêtes manuelles ne sont pas dans la transaction
-
-`shiftDescendantLevels()` et les agrégations passent par le driver, pas par le flush : elles
-**échappent** à `MongoTransactional`. Ne pas les compter dans un raisonnement d'atomicité, et ne pas
-en introduire de nouvelles dans un chemin qui doit être atomique.
 
 ### Index & contraintes
 
@@ -214,7 +209,7 @@ Un seul jeu, `dev`, sous `Symfony/DataFixtures/dev/` : 30 catégories sur 4 nive
   `Doctrine\Bundle\MongoDBBundle\Fixture\Fixture`, tag `doctrine.fixture.odm.mongodb`) :
   `doctrine/doctrine-fixtures-bundle` est spécifique à l'ORM et **n'est pas installé**.
 - **Une fixture écrit des documents, pas des agrégats** : elle court-circuite les repositories et doit
-  donc poser elle-même ce qu'ils calculent — le `level` et le `nbProduct`.
+  donc poser elle-même le `nbProduct`. Gedmo Tree calcule `path` et `level` au flush depuis `parent`.
 - Les titres sont tirés en `unique()` et `DataFixturesTrait::uniqueSlug()` suffixe les collisions de
   slug : sans cela la fixture échouerait une fois sur dix, au hasard du tirage.
 
@@ -258,7 +253,8 @@ compteraient dans le suivant.
 - [ ] Aucun `flush()` hors `MongoTransactional` — sauf `MongoOutboxTransport::send()`, hors transaction.
 - [ ] Les Domain Events sont écrits par `persist()`, jamais par le pilote, dans le chemin nominal.
 - [ ] Le mapping Domain ↔ Document passe par un mapper dédié, avec `reconstitute()`.
-- [ ] Cascade, `level` et `nbProduct` maintenus explicitement — la base ne les gère pas.
+- [ ] La suppression sans enfant est gardée par l'agrégat ; Gedmo Tree maintient `path` et `level`.
+- [ ] `nbProduct` est maintenu explicitement par les cas d'usage.
 - [ ] Index déclarés dans le document, nommés explicitement, posés par `make db-index`.
 - [ ] Aucun code Infra ne dépend de `src/Presentation/`.
 - [ ] Aucun broker ni base relationnelle ajoutés ; Redis reste dédié au cache applicatif partagé.

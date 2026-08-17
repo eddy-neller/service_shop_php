@@ -3,4 +3,5 @@ stof_doctrine_extensions:
     translation_fallback: true
     mongodb:
         default:
+            tree: true
             translatable: true

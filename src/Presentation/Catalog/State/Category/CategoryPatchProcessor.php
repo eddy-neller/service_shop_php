@@ -13,6 +13,7 @@ use App\Presentation\Catalog\Dto\Category\CategoryPatchInput;
 use App\Presentation\Catalog\Presenter\CategoryResourcePresenter;
 use App\Presentation\Shared\State\PresentationErrorCode;
 use LogicException;
+use ReflectionProperty;
 
 final readonly class CategoryPatchProcessor implements ProcessorInterface
 {
@@ -34,8 +35,9 @@ final readonly class CategoryPatchProcessor implements ProcessorInterface
             throw new LogicException(PresentationErrorCode::INVALID_INPUT->value);
         }
 
+        $parentProvided = (new ReflectionProperty($data, 'parent'))->isInitialized($data);
         $parentId = null;
-        if (null !== $data->parent) {
+        if ($parentProvided && null !== $data->parent) {
             $parentId = $data->parent->id;
         }
 
@@ -44,6 +46,7 @@ final readonly class CategoryPatchProcessor implements ProcessorInterface
             title: $data->title,
             description: $data->description,
             parentId: $parentId,
+            parentProvided: $parentProvided,
         );
 
         $output = $this->commandBus->dispatch($command);

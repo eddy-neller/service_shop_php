@@ -76,6 +76,7 @@ final class UpdateCategoryByAdminTest extends TestCase
             title: 'New title',
             description: 'New description',
             parentId: $parentId->toString(),
+            parentProvided: true,
         );
 
         $this->repository->expects($this->exactly(2))
@@ -219,6 +220,7 @@ final class UpdateCategoryByAdminTest extends TestCase
             title: null,
             description: null,
             parentId: $categoryId->toString(),
+            parentProvided: true,
         );
 
         $this->repository->expects($this->never())
@@ -256,6 +258,7 @@ final class UpdateCategoryByAdminTest extends TestCase
             title: null,
             description: null,
             parentId: $parentId->toString(),
+            parentProvided: true,
         );
 
         $this->repository->expects($this->exactly(2))
@@ -286,6 +289,41 @@ final class UpdateCategoryByAdminTest extends TestCase
 
         $this->expectException(CategoryNotFoundException::class);
         $this->expectExceptionMessage('Parent category not found.');
+
+        $this->handler->handle($command);
+    }
+
+    public function testHandleThrowsWhenParentIsADescendant(): void
+    {
+        $categoryId = CategoryId::fromString(self::CATEGORY_ID);
+        $parentId = CategoryId::fromString(self::PARENT_ID);
+        $category = $this->createCategory($categoryId, 'Category', 'category');
+        $descendant = $this->createCategory($parentId, 'Descendant', 'descendant');
+
+        $command = new UpdateCategoryByAdminCommand(
+            categoryId: $categoryId->toString(),
+            title: null,
+            description: null,
+            parentId: $parentId->toString(),
+            parentProvided: true,
+        );
+
+        $this->transactional->expects($this->once())
+            ->method('transactional')
+            ->willReturnCallback(static fn (callable $callback) => $callback());
+        $this->repository->expects($this->exactly(2))
+            ->method('findById')
+            ->willReturnCallback(static fn (CategoryId $id): Category => $id->equals($categoryId) ? $category : $descendant);
+        $this->repository->expects($this->once())
+            ->method('isDescendantOf')
+            ->with($parentId, $categoryId)
+            ->willReturn(true);
+        $this->clock->expects($this->never())->method('now');
+        $this->slugGenerator->expects($this->never())->method('generate');
+        $this->repository->expects($this->never())->method('save');
+
+        $this->expectException(CatalogDomainException::class);
+        $this->expectExceptionMessage('Category cannot be moved below one of its descendants.');
 
         $this->handler->handle($command);
     }

@@ -57,6 +57,7 @@ Le provider recupere les filtres bruts dans `$context['filters']`, normalise les
 | --- | --- |
 | `level` | filtre sur le niveau calcule de la categorie |
 | `parent` | filtre par identifiant UUID du parent |
+| `root` | `true` pour ne retourner que les categories sans parent |
 | `page`, `itemsPerPage` | pagination client |
 | `order[title]`, `order[level]`, `order[nbProduct]`, `order[createdAt]` | tri `asc` ou `desc` |
 
@@ -78,7 +79,7 @@ Les processors ne manipulent pas les documents MongoDB. Ils extraient l'identifi
 
 `PATCH` ne lit pas l'element avant son processor (`read: false`). Sans cette option, API Platform tenterait d'utiliser son `ReadProvider` par defaut — absent depuis le retrait de l'ORM — et repondrait `404` avant l'execution de la commande. Le processor travaille a la place avec l'UUID de `$uriVariables` et le DTO deserialise.
 
-La semantique actuelle du `PATCH` est additive : une valeur `null` est indistinguable d'un champ omis pour le cas d'usage. Il est donc possible d'ajouter ou de changer un parent, mais pas de remettre explicitement `description` ou `parent` a `null` via cette operation.
+La semantique actuelle du `PATCH` est additive pour `description` : une valeur `null` est indistinguable d'un champ omis. Pour `parent`, cette distinction est conservee : un champ omis ne deplace pas la categorie, tandis que `"parent": null` la rattache a la racine. Un deplacement sous l'un de ses descendants est refuse.
 
 `DELETE` declare `output: false`, ne deserialize aucun modele (`read: false`) et renvoie `204` pour une categorie vide et sans enfant. Sinon, l'agregat refuse l'operation avec un conflit `409` ; aucune suppression en cascade n'est effectuee.
 

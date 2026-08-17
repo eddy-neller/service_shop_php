@@ -33,7 +33,9 @@ final readonly class UpdateCategoryByAdminCommandHandler implements CommandHandl
     public function handle(UpdateCategoryByAdminCommand $command): CategoryItem
     {
         $categoryId = CategoryId::fromString($command->categoryId);
-        $parentId = null !== $command->parentId ? CategoryId::fromString($command->parentId) : null;
+        $parentId = $command->parentProvided && null !== $command->parentId
+            ? CategoryId::fromString($command->parentId)
+            : null;
         $title = null !== $command->title ? CategoryTitle::fromString($command->title) : null;
         $slug = null !== $title ? $this->slugGenerator->generate($title->toString()) : null;
         $description = null !== $command->description
@@ -44,18 +46,32 @@ final readonly class UpdateCategoryByAdminCommandHandler implements CommandHandl
             throw new CatalogDomainException('Category cannot be its own parent.');
         }
 
-        return $this->transactional->transactional(
-            fn (): CategoryItem => $this->updateCategory($categoryId, $parentId, $title, $slug, $description),
+        $this->transactional->transactional(
+            function () use ($categoryId, $parentId, $command, $title, $slug, $description): void {
+                $this->updateCategory($categoryId, $parentId, $command->parentProvided, $title, $slug, $description);
+            },
+        );
+
+        $categoryTree = $this->repository->findTreeById($categoryId);
+        if (null === $categoryTree) {
+            throw new CategoryNotFoundException();
+        }
+
+        return CategoryItem::fromCategory(
+            category: $categoryTree['category'],
+            parent: $categoryTree['parent'],
+            children: $categoryTree['children'],
         );
     }
 
     private function updateCategory(
         CategoryId $categoryId,
         ?CategoryId $parentId,
+        bool $parentProvided,
         ?CategoryTitle $title,
         ?Slug $slug,
         ?CategoryDescription $description,
-    ): CategoryItem {
+    ): void {
         $category = $this->repository->findById($categoryId);
 
         if (null === $category) {
@@ -69,10 +85,14 @@ final readonly class UpdateCategoryByAdminCommandHandler implements CommandHandl
             }
         }
 
-        if (null !== $parentId) {
+        if ($parentProvided && null !== $parentId) {
             $parent = $this->repository->findById($parentId);
             if (null === $parent) {
                 throw new CategoryNotFoundException('Parent category not found.');
+            }
+
+            if ($this->repository->isDescendantOf($parentId, $categoryId)) {
+                throw new CatalogDomainException('Category cannot be moved below one of its descendants.');
             }
         }
 
@@ -86,7 +106,7 @@ final readonly class UpdateCategoryByAdminCommandHandler implements CommandHandl
             $category->describe($description, $now);
         }
 
-        if (null !== $parentId) {
+        if ($parentProvided) {
             $category->moveTo($parentId, $now);
         }
 
@@ -95,17 +115,5 @@ final readonly class UpdateCategoryByAdminCommandHandler implements CommandHandl
         // Un PATCH qui touche titre, description et parent publie trois faits distincts :
         // ce sont trois decisions, meme si l'appelant les a groupees dans une requete.
         $this->eventBus->publishAll($category->releaseEvents());
-
-        $categoryTree = $this->repository->findTreeById($categoryId);
-
-        if (null === $categoryTree) {
-            throw new CategoryNotFoundException();
-        }
-
-        return CategoryItem::fromCategory(
-            category: $categoryTree['category'],
-            parent: $categoryTree['parent'],
-            children: $categoryTree['children'],
-        );
     }
 }
