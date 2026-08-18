@@ -34,7 +34,7 @@ d'item périmée avec une granularité d'événements incomplète.
 # config/packages/cache.yaml
 framework:
     cache:
-        prefix_seed: en_shop_service_shop
+        prefix_seed: en_shop_php_service_shop
         app: cache.adapter.redis
         default_redis_provider: '%env(REDIS_URL)%'
         pools:
@@ -44,7 +44,7 @@ framework:
 
 Redis est **dédié à `service_shop`** et ne contient que des résultats de queries recomputables. Il
 partage les entrées et les invalidations entre les replicas de `app`, sans aucun accès au Redis de
-`service_identity`. `prefix_seed: en_shop_service_shop` isole en plus les clés Symfony Cache.
+`service_identity`. `prefix_seed: en_shop_php_service_shop` isole en plus les clés Symfony Cache.
 
 `cache.adapter.redis_tag_aware` n'est pas optionnel : il rend `invalidateTags()` visible depuis
 toute replica et conserve l'injection de `TagAwareCacheInterface` dans

@@ -10,29 +10,23 @@ use Doctrine\Bundle\MongoDBBundle\Fixture\Fixture;
 use Doctrine\Bundle\MongoDBBundle\Fixture\FixtureGroupInterface;
 use Doctrine\Persistence\ObjectManager;
 use Faker\Factory;
+use Faker\Generator;
 use Ramsey\Uuid\Uuid;
 
 /**
- * Arbre de categories : 2 racines, puis 4, 8 et 16.
- *
- * Deux proprietes du jeu de fixtures meritent d'etre vues :
- *
- * 1. Gedmo Tree calcule `path` et `level` au flush, y compris pour les documents
- *    ecrits directement par une fixture.
- * 2. Les titres sont tires en `unique()` : la collection porte un index unique sur
- *    `title`, au-dela du seul `slug`.
+ * Arbre dynamique de categories : 2 racines, puis 4, 8 et 16.
  */
 class CategoryFixtures extends Fixture implements FixtureGroupInterface
 {
     use DataFixturesTrait;
 
-    public const int NB_LEVEL_0 = 2;
+    public const int NB_LEVEL_1 = 2;
 
-    public const int NB_LEVEL_1 = 4;
+    public const int NB_LEVEL_2 = 4;
 
-    public const int NB_LEVEL_2 = 8;
+    public const int NB_LEVEL_3 = 8;
 
-    public const int NB_LEVEL_3 = 16;
+    public const int NB_LEVEL_4 = 16;
 
     public function load(ObjectManager $manager): void
     {
@@ -42,26 +36,24 @@ class CategoryFixtures extends Fixture implements FixtureGroupInterface
         /** @var list<CategoryDocument> $parents */
         $parents = [];
 
-        foreach ([self::NB_LEVEL_0, self::NB_LEVEL_1, self::NB_LEVEL_2, self::NB_LEVEL_3] as $level => $count) {
+        foreach (
+            [
+                1 => self::NB_LEVEL_1,
+                2 => self::NB_LEVEL_2,
+                3 => self::NB_LEVEL_3,
+                4 => self::NB_LEVEL_4,
+            ] as $level => $count
+        ) {
             $current = [];
 
-            for ($i = 1; $i <= $count; ++$i) {
-                // Chaque parent recoit au moins un enfant tant qu'il en reste a placer ;
-                // au-dela, le rattachement est aleatoire. L'arbre reste donc connexe.
+            for ($index = 1; $index <= $count; ++$index) {
                 $parent = [] === $parents
                     ? null
-                    : ($parents[$i - 1] ?? $parents[$faker->numberBetween(0, count($parents) - 1)]);
+                    : ($parents[$index - 1] ?? $parents[$faker->numberBetween(0, count($parents) - 1)]);
+                $category = $this->createCategory($faker, $parent, $usedSlugs);
 
-                $category = $this->createCategory(
-                    title: $faker->unique()->company(),
-                    description: $faker->text(),
-                    parent: $parent,
-                    usedSlugs: $usedSlugs,
-                );
-
-                $this->addReference('shop_category_level_' . $level . '_' . $i, $category);
+                $this->addReference('shop_category_level_' . $level . '_' . $index, $category);
                 $current[] = $category;
-
                 $manager->persist($category);
             }
 
@@ -71,21 +63,18 @@ class CategoryFixtures extends Fixture implements FixtureGroupInterface
         $manager->flush();
     }
 
-    /**
-     * @param array<string, true> $usedSlugs
-     */
     private function createCategory(
-        string $title,
-        string $description,
+        Generator $faker,
         ?CategoryDocument $parent,
         array &$usedSlugs,
     ): CategoryDocument {
         $timestamps = $this->generateTimestamps();
+        $title = $faker->unique()->company();
 
         $category = new CategoryDocument();
         $category->id = Uuid::uuid4()->toString();
         $category->title = $title;
-        $category->description = $description;
+        $category->description = $faker->text();
         $category->slug = $this->uniqueSlug($title, $usedSlugs);
         $category->parent = $parent;
         $category->nbProduct = 0;
@@ -95,9 +84,6 @@ class CategoryFixtures extends Fixture implements FixtureGroupInterface
         return $category;
     }
 
-    /**
-     * @return list<string>
-     */
     public static function getGroups(): array
     {
         return ['dev'];

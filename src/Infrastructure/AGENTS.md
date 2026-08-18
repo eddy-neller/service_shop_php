@@ -213,7 +213,8 @@ Un seul jeu, `dev`, sous `Symfony/DataFixtures/dev/` : 30 catégories sur 4 nive
 - Les titres sont tirés en `unique()` et `DataFixturesTrait::uniqueSlug()` suffixe les collisions de
   slug : sans cela la fixture échouerait une fois sur dix, au hasard du tirage.
 
-**Il n'existe pas de fixtures `test`.** La suite pose son propre jeu — voir ci-dessous.
+**Il n'existe pas de fixtures `test`.** La suite pose son propre jeu — voir
+[`docs/api_test_database.md`](../../docs/api_test_database.md) pour la raison et les contraintes de ce seed.
 
 ---
 

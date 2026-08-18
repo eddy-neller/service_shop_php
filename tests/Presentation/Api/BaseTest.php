@@ -6,23 +6,6 @@ namespace App\Tests\Presentation\Api;
 
 use ApiPlatform\Symfony\Bundle\Test\ApiTestCase;
 use ApiPlatform\Symfony\Bundle\Test\Client;
-use App\Application\Catalog\Port\CategoryRepositoryInterface;
-use App\Application\Catalog\Port\ProductRepositoryInterface;
-use App\Application\Customer\Port\CustomerRepositoryInterface;
-use App\Application\Shared\Port\TransactionalInterface;
-use App\Domain\Catalog\Model\Category;
-use App\Domain\Catalog\Model\Product;
-use App\Domain\Catalog\ValueObject\CategoryDescription;
-use App\Domain\Catalog\ValueObject\CategoryId;
-use App\Domain\Catalog\ValueObject\CategoryTitle;
-use App\Domain\Catalog\ValueObject\ProductDescription;
-use App\Domain\Catalog\ValueObject\ProductSubtitle;
-use App\Domain\Catalog\ValueObject\ProductTitle;
-use App\Domain\Customer\Model\Customer;
-use App\Domain\Customer\ValueObject\UserAccountId;
-use App\Domain\SharedKernel\ValueObject\Money;
-use App\Domain\SharedKernel\ValueObject\Slug;
-use DateTimeImmutable;
 use Doctrine\ODM\MongoDB\DocumentManager;
 use Faker\Factory;
 use Faker\Generator;
@@ -121,15 +104,6 @@ abstract class BaseTest extends ApiTestCase
         'user_member_1' => ['ROLE_USER'],
     ];
 
-    /** Titre de la categorie servant de point d'ancrage aux tests (parent + enfant + description). */
-    protected const string SEED_CATEGORY_TITLE = 'Shop category level 1 title 1';
-
-    /** Libelle de l'adresse semee pour `user_member`, point d'ancrage des tests `/me`. */
-    protected const string SEED_ADDRESS_LABEL = 'Seed address';
-
-    /** Titre du produit servant de point d'ancrage aux tests. */
-    protected const string SEED_PRODUCT_TITLE = 'Product title 1';
-
     /** Les index du mapping ne sont poses qu'une fois par processus (cf. resetDatabase()). */
     private static bool $indexesEnsured = false;
 
@@ -147,9 +121,10 @@ abstract class BaseTest extends ApiTestCase
         $this->documentManager = $documentManager;
 
         $this->resetDatabase();
-        $this->seedCatalog();
-        $this->seedCustomer();
+        $this->seedTestData();
     }
+
+    abstract protected function seedTestData(): void;
 
     protected function getApiClient(): HttpClientInterface
     {
@@ -221,8 +196,8 @@ abstract class BaseTest extends ApiTestCase
      */
     /**
      * Le `sub` du jeton de test. Ce service n'ayant aucun compte, c'est **la seule**
-     * identite d'utilisateur qui existe : les tests s'en servent pour retrouver le client
-     * seme par `seedCustomer()`.
+     * identite d'utilisateur qui existe : les seeders Customer l'emploient comme
+     * `userAccountId` du client correspondant.
      */
     protected function userIdOf(string $username): string
     {
@@ -383,174 +358,6 @@ abstract class BaseTest extends ApiTestCase
     }
 
     /**
-     * Pose le catalogue attendu par les tests API.
-     *
-     * Le seed passe par les repositories et `MongoTransactional`, pas par des documents
-     * ecrits a la main : c'est le chemin reel des cas d'usage, donc le seul qui exerce le
-     * mapping et le calcul Gedmo de `path` et `level`. Les parents sont sauves avant leurs
-     * enfants afin que leurs chemins soient disponibles dans le meme flush.
-     *
-     * Trois contraintes dictent sa forme, et il faut les relire avant de le reduire :
-     *
-     * - **6 categories** : la pagination est testee en `page=3&itemsPerPage=2`, donc une
-     *   page 3 doit exister et ne pas etre vide, sinon `items[0]` est nul et toutes les
-     *   assertions de serialisation tombent ;
-     * - **la categorie d'ancrage a un parent, un enfant et une description** : la vue
-     *   d'item asserte la presence des cles `parent`, `children` et `description`, et le
-     *   serializer omet les valeurs nulles. Une categorie orpheline les ferait disparaitre ;
-     * - **les produits portent une image** : `imageUrl` est nul sans elle, donc absent du
-     *   JSON, alors que la collection asserte sa presence.
-     */
-    protected function seedCatalog(): void
-    {
-        $container = static::getContainer();
-
-        $categories = $container->get(CategoryRepositoryInterface::class);
-        $products = $container->get(ProductRepositoryInterface::class);
-        $transactional = $container->get(TransactionalInterface::class);
-
-        if (
-            !$categories instanceof CategoryRepositoryInterface
-            || !$products instanceof ProductRepositoryInterface
-            || !$transactional instanceof TransactionalInterface
-        ) {
-            throw new RuntimeException('seedCatalog: catalog services not found');
-        }
-
-        $now = new DateTimeImmutable();
-
-        $transactional->transactional(function () use ($categories, $products, $now): void {
-            $rootOne = $this->aCategory($categories, 'Shop category level 0 title 1', $now);
-            $rootTwo = $this->aCategory($categories, 'Shop category level 0 title 2', $now);
-            $categories->save($rootOne);
-            $categories->save($rootTwo);
-
-            $anchor = $this->aCategory(
-                $categories,
-                self::SEED_CATEGORY_TITLE,
-                $now,
-                $rootOne->getId(),
-                "Description de la categorie d'ancrage.",
-            );
-            $categories->save($anchor);
-            $categories->save($this->aCategory($categories, 'Shop category level 1 title 2', $now, $rootOne->getId()));
-            $categories->save($this->aCategory($categories, 'Shop category level 1 title 3', $now, $rootTwo->getId()));
-
-            // Donne `children` et `hasChildren` a la categorie d'ancrage.
-            $categories->save($this->aCategory($categories, 'Shop category level 2 title 1', $now, $anchor->getId()));
-
-            for ($i = 1; $i <= 6; ++$i) {
-                $products->save($this->aProduct($products, 'Product title ' . $i, $anchor->getId(), $now));
-
-                // `nbProduct` est denormalise et maintenu par le cas d'usage, pas par le
-                // repository : un seed qui l'oublie laisse une base incoherente, et le
-                // premier DELETE de produit echoue sur « Product count cannot be negative ».
-                $anchor->increaseProductCount($now);
-            }
-
-            $categories->save($anchor);
-        });
-
-        $this->documentManager->clear();
-    }
-
-    private function aCategory(
-        CategoryRepositoryInterface $categories,
-        string $title,
-        DateTimeImmutable $now,
-        ?CategoryId $parentId = null,
-        ?string $description = null,
-    ): Category {
-        return Category::create(
-            id: $categories->nextIdentity(),
-            title: CategoryTitle::fromString($title),
-            slug: Slug::fromString($this->slugify($title)),
-            now: $now,
-            parentId: $parentId,
-            description: null === $description ? null : CategoryDescription::fromString($description),
-        );
-    }
-
-    private function aProduct(
-        ProductRepositoryInterface $products,
-        string $title,
-        CategoryId $categoryId,
-        DateTimeImmutable $now,
-    ): Product {
-        $product = Product::create(
-            id: $products->nextIdentity(),
-            title: ProductTitle::fromString($title),
-            subtitle: ProductSubtitle::fromString('Sous-titre de ' . $title),
-            description: ProductDescription::fromString('Description de ' . $title),
-            price: Money::fromEuros(19.99),
-            slug: Slug::fromString($this->slugify($title)),
-            categoryId: $categoryId,
-            now: $now,
-        );
-
-        $product->updateImage(md5($title) . '.jpg', $now);
-
-        return $product;
-    }
-
-    /**
-     * Provisionne le client des trois utilisateurs de test.
-     *
-     * `userAccountId` vaut le `sub` que `getToken()` place dans le jeton : c'est ce qui rend
-     * les routes `/me` accessibles sans passer par le relais de l'etape B, lequel n'existe
-     * pas encore.
-     */
-    protected function seedCustomer(): void
-    {
-        $customers = static::getContainer()->get(CustomerRepositoryInterface::class);
-        $transactional = static::getContainer()->get(TransactionalInterface::class);
-
-        if (
-            !$customers instanceof CustomerRepositoryInterface
-            || !$transactional instanceof TransactionalInterface
-        ) {
-            throw new RuntimeException('seedCustomer: customer services not found');
-        }
-
-        $now = new DateTimeImmutable('2025-01-01 10:00:00');
-
-        $transactional->transactional(function () use ($customers, $now): void {
-            foreach (array_keys(self::USER_ROLES) as $username) {
-                $customer = Customer::create(
-                    id: $customers->nextIdentity(),
-                    now: $now,
-                    userAccountId: UserAccountId::fromString($this->userIdOf($username)),
-                );
-
-                if ('user_member' === $username) {
-                    $customer->addAddress(
-                        addressId: $customers->nextAddressIdentity(),
-                        label: self::SEED_ADDRESS_LABEL,
-                        firstname: 'John',
-                        lastname: 'Doe',
-                        street: '1 rue de la Paix',
-                        zipCode: '75000',
-                        city: 'Paris',
-                        country: 'France',
-                        phone: '0102030405',
-                        now: $now,
-                        company: 'Acme',
-                    );
-                }
-
-                $customers->save($customer);
-            }
-        });
-
-        $this->documentManager->clear();
-    }
-
-    private function slugify(string $value): string
-    {
-        return strtolower(str_replace([' ', "'"], ['-', ''], $value));
-    }
-
-    /**
      * Vide les collections **sans** les supprimer.
      *
      * `drop()` emporterait les index avec les documents, et il faudrait les reposer a
@@ -572,7 +379,7 @@ abstract class BaseTest extends ApiTestCase
             self::$indexesEnsured = true;
         }
 
-        foreach (['product', 'category', 'customer', 'cart'] as $collection) {
+        foreach (['product', 'category', 'customer', 'cart', 'domain_event_outbox'] as $collection) {
             $database->selectCollection($collection)->deleteMany([]);
         }
 

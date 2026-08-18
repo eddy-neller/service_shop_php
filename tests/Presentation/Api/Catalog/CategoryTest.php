@@ -15,15 +15,22 @@ use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
 
 final class CategoryTest extends BaseTest
 {
+    use CatalogTestDataTrait;
+
     protected const string URL_API_OPE = self::URL_API . 'shop/categories';
 
-    public const array CRITERIA_IRI = ['title' => 'Shop category level 1 title 1'];
+    public const array CRITERIA_IRI = ['title' => CategoryTestDataSeeder::ANCHOR_CATEGORY_TITLE];
 
     private const string UNKNOWN_ID = '550e8400-e29b-41d4-a716-446655440099';
 
     private const string INVALID_ID = 'invalid-uuid';
 
     protected ?string $iri;
+
+    protected function seedTestData(): void
+    {
+        $this->seedCatalogTestData();
+    }
 
     protected function setUp(): void
     {

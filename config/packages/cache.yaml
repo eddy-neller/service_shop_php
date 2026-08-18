@@ -2,7 +2,7 @@ framework:
     cache:
         # Redis est propre a ce service et partage le cache entre ses futures replicas.
         # Il ne porte aucun etat d'authentification et n'est jamais mutualise avec Identity.
-        prefix_seed: en_shop_service_shop
+        prefix_seed: en_shop_php_service_shop
 
         # The "app" cache stores to the filesystem by default.
         # The data in this cache should persist between deploys.

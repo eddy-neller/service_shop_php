@@ -2,6 +2,12 @@ services:
   nginx:
     ports:
       - "${NGINX_EXPOSED_PORT:-20910}:80"
+    # `default` DOIT etre liste explicitement : declarer `networks:` sur un service
+    # remplace son rattachement implicite, et sans lui nginx perdrait l'acces a `app`
+    # (symptome : 502 de la passerelle, qui accuse le mauvais coupable).
+    networks:
+      - default
+      - edge
 
 ###> doctrine/mongodb-odm-bundle ###
   mongodb:
@@ -12,3 +18,15 @@ services:
   redis:
     ports:
       - "${REDIS_EXPOSED_PORT:-20913}:6379"
+
+# Seul `nginx` rejoint le reseau de la passerelle. MongoDB et Redis restent sur le
+# reseau par defaut de la stack : c'est ce qui garantit *par la topologie* qu'aucun
+# autre service ne peut joindre cette base, et inversement (cf. AGENTS.md).
+#
+# Reseau `external` : il doit exister avant `docker compose up`, sinon la stack
+# refuse de monter. C'est `make up` qui le cree (idempotent), pour que le service
+# continue de demarrer seul sans dependre de la passerelle.
+networks:
+  edge:
+    external: true
+    name: en_shop_php_edge

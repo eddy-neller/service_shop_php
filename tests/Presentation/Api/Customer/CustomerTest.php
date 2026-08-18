@@ -15,6 +15,8 @@ use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
 
 final class CustomerTest extends BaseTest
 {
+    use CustomerTestDataTrait;
+
     protected const string URL_API_OPE = self::URL_API . 'shop/customers';
 
     public const array CRITERIA_IRI = ['status' => CustomerStatus::ACTIVE];
@@ -25,12 +27,17 @@ final class CustomerTest extends BaseTest
 
     protected ?string $iri;
 
+    protected function seedTestData(): void
+    {
+        $this->seedCustomerTestData();
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
 
         // Aucun compte n'existe ici : le `sub` du jeton est la seule identite d'utilisateur,
-        // et c'est elle que `seedCustomer()` a posee comme `userAccountId`.
+        // et c'est elle que le seeder Customer a posee comme `userAccountId`.
         $customer = $this->getInstance(Customer::class, [
             'userAccountId' => $this->userIdOf($this->userMember),
         ]);

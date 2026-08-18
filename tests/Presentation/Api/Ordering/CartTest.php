@@ -6,6 +6,9 @@ namespace App\Tests\Presentation\Api\Ordering;
 
 use App\Infrastructure\Persistence\Mongo\Catalog\ProductDocument as Product;
 use App\Tests\Presentation\Api\BaseTest;
+use App\Tests\Presentation\Api\Catalog\CatalogTestDataTrait;
+use App\Tests\Presentation\Api\Catalog\ProductTestDataSeeder;
+use App\Tests\Presentation\Api\Customer\CustomerTestDataTrait;
 use Generator;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\HttpFoundation\Request;
@@ -14,6 +17,9 @@ use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
 
 final class CartTest extends BaseTest
 {
+    use CatalogTestDataTrait;
+    use CustomerTestDataTrait;
+
     protected const string URL_API_OPE = self::URL_API . 'shop/me/cart';
 
     private const string UNKNOWN_PRODUCT_ID = '550e8400-e29b-41d4-a716-446655440099';
@@ -21,6 +27,12 @@ final class CartTest extends BaseTest
     private const string INVALID_ID = 'invalid-uuid';
 
     protected string $productId;
+
+    protected function seedTestData(): void
+    {
+        $this->seedCatalogTestData();
+        $this->seedCustomerTestData();
+    }
 
     protected function setUp(): void
     {
@@ -366,7 +378,7 @@ final class CartTest extends BaseTest
 
     private function getAnyProductId(): string
     {
-        $product = $this->getInstance(Product::class, ['title' => self::SEED_PRODUCT_TITLE]);
+        $product = $this->getInstance(Product::class, ['title' => ProductTestDataSeeder::ANCHOR_PRODUCT_TITLE]);
         self::assertInstanceOf(Product::class, $product);
 
         return $product->id;

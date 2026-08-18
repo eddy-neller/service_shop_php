@@ -17,18 +17,25 @@ use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
 
 final class AddressTest extends BaseTest
 {
+    use CustomerTestDataTrait;
+
     protected const string URL_API_OPE = self::URL_API . 'shop/me/addresses';
 
-    public const array CRITERIA_IRI = ['name' => self::SEED_ADDRESS_LABEL];
+    public const array CRITERIA_IRI = ['name' => CustomerTestDataSeeder::SEED_ADDRESS_LABEL];
 
     protected ?string $iri;
+
+    protected function seedTestData(): void
+    {
+        $this->seedCustomerTestData();
+    }
 
     protected function setUp(): void
     {
         parent::setUp();
 
         // Les adresses sont imbriquees : on ne les cherche plus par elles-memes, on prend
-        // celle que `seedCustomer()` a posee dans le document du client.
+        // celle que le seeder Customer a posee dans le document du client.
         $customer = $this->getInstance(Customer::class, [
             'userAccountId' => $this->userIdOf($this->userMember),
         ]);

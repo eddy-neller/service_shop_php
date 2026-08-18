@@ -7,16 +7,23 @@ namespace App\Infrastructure\Symfony\DataFixtures;
 use DateTimeImmutable;
 use DateTimeInterface;
 use Faker\Factory;
+use Ramsey\Uuid\Uuid;
 use Symfony\Component\String\Slugger\AsciiSlugger;
 
 /**
  * Outillage commun aux fixtures.
- *
- * Les helpers `getUsers()` / `getTestUsers()`
- * n'ont pas suivi, ce service n'ayant pas d'utilisateurs — l'identite vient du token.
  */
 trait DataFixturesTrait
 {
+    /**
+     * Horodatage stable des fixtures de test : les donnees chargees manuellement restent
+     * reproductibles, sans dependre de l'instant ou la commande est lancee.
+     */
+    protected function testTimestamp(): DateTimeImmutable
+    {
+        return new DateTimeImmutable('2025-01-01 10:00:00');
+    }
+
     /**
      * @return array{createdAt: DateTimeImmutable, updatedAt: DateTimeImmutable}
      */
@@ -58,5 +65,22 @@ trait DataFixturesTrait
         $used[$slug] = true;
 
         return $slug;
+    }
+
+    /**
+     * Identifiant stable pour une fixture : utile aux relations entre documents et aux
+     * scenarios relances plusieurs fois sur une meme base.
+     */
+    protected function fixtureId(string $scope, string $value): string
+    {
+        return Uuid::uuid5(Uuid::NAMESPACE_OID, 'shop-fixture:' . $scope . ':' . $value)->toString();
+    }
+
+    /**
+     * Slug deterministe pour les jeux de donnees dont les titres sont connus a l'avance.
+     */
+    protected function fixtureSlug(string $value): string
+    {
+        return (new AsciiSlugger())->slug($value)->lower()->toString();
     }
 }

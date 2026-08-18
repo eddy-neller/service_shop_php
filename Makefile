@@ -57,8 +57,6 @@ install:
 	@make ci && make cda
 	@echo "$(YELLOW)** Initialise MongoDB DEV **$(RESET)"
 	@make fixtures
-	@echo "$(YELLOW)** Initialise MongoDB TEST **$(RESET)"
-	@$(APP) bin/console doctrine:mongodb:schema:create --index --env=test
 	@echo "$(YELLOW)** Load composer outdated & symfony:recipes **$(RESET)"
 	@make co && make csr
 	@echo "$(YELLOW)** Test du Jalon 1 **$(RESET)"
@@ -66,16 +64,13 @@ install:
 	@make db-index
 	@echo "$(GREEN)** Installation completed!!! **$(RESET)"
 
-## Re-initialise les bases MongoDB dev + test sans reconstruire les conteneurs
+## Re-initialise la base MongoDB dev sans reconstruire les conteneurs
 .PHONY: reinstall
 reinstall:
 	@echo "$(YELLOW)** Starting re-installation... **$(RESET)"
 	@echo "$(YELLOW)** Re-initialise MongoDB DEV **$(RESET)"
 	@$(APP) bin/console doctrine:mongodb:schema:drop --db --no-interaction
 	@make fixtures
-	@echo "$(YELLOW)** Re-initialise MongoDB TEST **$(RESET)"
-	@$(APP) bin/console doctrine:mongodb:schema:drop --db --no-interaction --env=test
-	@$(APP) bin/console doctrine:mongodb:schema:create --index --env=test
 	@echo "$(GREEN)** Re-installation completed!!! **$(RESET)"
 
 ## Recharge les fixtures de dev sans recreer la base
@@ -97,9 +92,17 @@ console:
 dc:
 	@$(DOCKER)
 
+## Crée le réseau de la passerelle s'il n'existe pas (idempotent)
+##   Déclaré `external` dans docker-compose.override.yaml : absent, `docker compose
+##   up` échoue. Le créer ici plutôt que de dépendre de la passerelle préserve la
+##   propriété « le service démarre seul » (cf. AGENTS.md).
+.PHONY: network
+network:
+	@docker network create en_shop_php_edge 2>/dev/null || true
+
 ## Crée et demarre les containers
 .PHONY: up
-up:
+up: network
 	@$(DOCKER) up -d --remove-orphans
 
 ## Stop et détruits les containers
@@ -324,6 +327,10 @@ rector-dry:
 
 ##--------------------------------- Autres -----------------------------------
 
+.PHONY: consume
+consume: ## Depile l'outbox des Domain Events
+	@$(APP) bin/console messenger:consume domain_events -vv
+
 ## Les index ne sont pas crees par une migration : ils sont declares dans le mapping
 ## des documents et poses par cette commande. Sans elle, l'unicite des titres n'est
 ## garantie par rien — le findByTitle() des handlers est un check-then-act.
@@ -332,16 +339,12 @@ db-index: ## Cree les index declares dans le mapping ODM
 	@$(APP) bin/console doctrine:mongodb:schema:create --index
 	@echo "$(GREEN)** Index MongoDB poses **$(RESET)"
 
-.PHONY: consume
-consume: ## Depile l'outbox des Domain Events
-	@$(APP) bin/console messenger:consume domain_events -vv
-
 ## Charge le catalogue de developpement : 30 categories sur 4 niveaux, 1000 produits.
 ## Purge la base au passage — d'ou le groupe `dev`, jamais joue ailleurs.
 .PHONY: fixtures
 fixtures: ## Charge les fixtures de dev (purge la base)
 	@$(APP) bin/console doctrine:mongodb:fixtures:load --group=dev --no-interaction
-	@make db-index
+	@$(APP) bin/console doctrine:mongodb:schema:create --index
 	@echo "$(GREEN)** Catalogue de developpement charge **$(RESET)"
 
 ## Genere la paire de cles DEDIEE AUX TESTS (jamais celle de production)

@@ -1,9 +1,9 @@
-name: en_shop_service_shop
+name: en_shop_php_service_shop
 
 services:
   ###> doctrine/mongodb-odm-bundle ###
   mongodb:
-    container_name: en_shop_service_shop_mongodb
+    container_name: en_shop_php_service_shop_mongodb
     restart: unless-stopped
     build:
       context: ./docker/mongodb
@@ -46,7 +46,7 @@ services:
   ###< doctrine/mongodb-odm-bundle ###
 
   app:
-    container_name: en_shop_service_shop_app
+    container_name: en_shop_php_service_shop_app
     restart: unless-stopped
     build:
       context: .
@@ -67,7 +67,7 @@ services:
       - host.docker.internal:host-gateway
 
   nginx:
-    container_name: en_shop_service_shop_nginx
+    container_name: en_shop_php_service_shop_nginx
     restart: unless-stopped
     depends_on:
       - app
@@ -80,7 +80,7 @@ services:
       - ./docker/nginx/conf.d:/etc/nginx/conf.d:rw
 
   redis:
-      container_name: en_shop_service_shop_redis
+      container_name: en_shop_php_service_shop_redis
       restart: unless-stopped
       build:
           context: ./docker/redis

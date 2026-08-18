@@ -49,7 +49,7 @@ class ProductFixtures extends Fixture implements DependentFixtureInterface, Fixt
         $productsPerCategory = [];
 
         foreach ($products as $index => $value) {
-            $level = $faker->numberBetween(0, 3);
+            $level = $faker->numberBetween(1, 4);
             $max = (int) constant(CategoryFixtures::class . '::NB_LEVEL_' . $level);
             $category = $this->getReference(
                 'shop_category_level_' . $level . '_' . $faker->numberBetween(1, $max),
@@ -96,9 +96,6 @@ class ProductFixtures extends Fixture implements DependentFixtureInterface, Fixt
         $this->publishSeedImages($products);
     }
 
-    /**
-     * @return list<array{title: string, subtitle: string, price: int, sourceImageName: string}>
-     */
     private function seedProducts(): array
     {
         return [
@@ -117,9 +114,6 @@ class ProductFixtures extends Fixture implements DependentFixtureInterface, Fixt
      * Les fixtures ecrivent des noms de fichiers ; sans les fichiers eux-memes, tous les
      * `imageUrl` du catalogue de dev pointeraient vers des 404. Les visuels de reference
      * vivent dans `assets/`, versionnes ; `public/uploads/` ne l'est pas.
-     */
-    /**
-     * @param list<array{title: string, subtitle: string, price: int, sourceImageName: string}> $products
      */
     private function publishSeedImages(array $products): void
     {
@@ -144,17 +138,11 @@ class ProductFixtures extends Fixture implements DependentFixtureInterface, Fixt
         }
     }
 
-    /**
-     * @return list<class-string>
-     */
     public function getDependencies(): array
     {
         return [CategoryFixtures::class];
     }
 
-    /**
-     * @return list<string>
-     */
     public static function getGroups(): array
     {
         return ['dev'];

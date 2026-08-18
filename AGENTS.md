@@ -137,14 +137,15 @@ reellement l'unicite des titres et des slugs. Ils ne sont poses par aucune migra
 
 `make fixtures` charge le catalogue de developpement : **30 categories** sur 4 niveaux (2 / 4 / 8 / 16)
 et **1000 produits**, dont les 8 visuels de reference. La commande **purge la base** —
-d'ou le groupe `dev`, qui n'est joue nulle part ailleurs. La suite de tests, elle, n'y touche pas :
-elle vit dans `service_shop_test` et pose son propre jeu.
+d'ou le groupe `dev`, qui n'est joue nulle part ailleurs.
 
-Ce jeu n'est **pas** une fixture : `BaseTest::seedCatalog()` ecrit 6 categories et 6 produits via les
-repositories et `MongoTransactional`, a chaque test, apres un `deleteMany()`. Passer par
-les agregats plutot que par des documents evite le piege decrit plus bas — sauf pour `nbProduct`, que
-seul le cas d'usage maintient et que le seed doit donc incrementer lui-meme. Sans cela, le premier
-`DELETE` de produit echoue sur « Product count cannot be negative ».
+La suite API vit dans `service_shop_test` et pose son propre jeu a chaque scenario, apres un
+`deleteMany()`. `BaseTest` ne connait que le cycle de vie commun ; les seeders Catalog et Customer
+vivent dans leurs repertoires de tests respectifs et chaque classe declare les donnees dont elle a
+besoin. Cette duplication est volontaire : Doctrine MongoDB ODM ne fournit pas de connexion
+transactionnelle ambiante comme DBAL/DAMA. `MongoTransactional` ouvre et valide sa propre session
+pour chaque cas d'usage, donc une transaction demarree seulement par PHPUnit ne pourrait pas
+l'annuler. Le detail est documente dans [`docs/api_test_database.md`](docs/api_test_database.md).
 
 **Ne jamais remettre un `drop()` dans la remise a zero d'un test.** Il emporte les index, qu'il faut
 alors reposer : mesure faite, `drop()` + `ensureIndexes()` coute **155 ms** par test la ou un
