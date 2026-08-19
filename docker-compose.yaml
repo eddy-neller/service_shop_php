@@ -1,5 +1,13 @@
 name: en_shop_php_service_shop
 
+# Ce fichier decrit le WORKLOAD : ce que le service est, en developpement comme en
+# production. Tout ce qui n'existe que sur un poste de developpement — ports publies,
+# code monte depuis l'hote — vit dans docker-compose.override.yaml, que
+# Compose charge automatiquement en local et qu'une production ne deploie pas.
+#
+# Consequence a preserver : plus aucun « commenter cette ligne en production ». Une
+# etape manuelle de ce genre s'oublie une fois, et la panne est silencieuse.
+
 services:
   ###> doctrine/mongodb-odm-bundle ###
   mongodb:
@@ -45,29 +53,48 @@ services:
       # - ./docker/mongodb/data:/data/db:rw
   ###< doctrine/mongodb-odm-bundle ###
 
+  # `app` et `worker` partagent la MEME image : meme code, meme dependances, seul le
+  # role Supervisor change (cf. docker/app/supervisor/supervisor.conf).
+  #
+  # Ils sont separes parce qu'ils ne scalent pas sur le meme signal : le web suit le
+  # trafic HTTP, le worker la profondeur de la file. Les garder ensemble imposait de
+  # multiplier les workers en multipliant le web.
+  #
+  # Pas de `container_name` : Docker refuse de scaler un service qui en porte un.
+  # Les autres conteneurs les joignent par leur nom de service (`app`, `worker`),
+  # que Compose declare comme alias reseau.
   app:
-    container_name: en_shop_php_service_shop_app
     restart: unless-stopped
-    build:
+    build: &app_build
       context: .
       dockerfile: ./docker/app/Dockerfile
+      # Etape `prod` : sans Composer ni outil de diagnostic, et
+      # avec un vendor installe en --no-dev. L'override bascule sur `dev` en local.
+      target: prod
+    image: &app_image en_shop_php_service_shop_app:latest
     depends_on:
       mongodb:
         condition: service_healthy
       redis:
         condition: service_healthy
     environment:
-      PHP_IDE_CONFIG: serverName=${PHP_IDE_SERVER_NAME:-en-shop-service-shop}
-      XDEBUG_MODE: ${XDEBUG_MODE:-off}
+      SUPERVISOR_ROLE: web
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
-    volumes:
-      # Commenter la ligne suivante en production
-      - ./:/var/www:rw
-    extra_hosts:
-      - host.docker.internal:host-gateway
+
+  worker:
+    restart: unless-stopped
+    build: *app_build
+    image: *app_image
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SUPERVISOR_ROLE: worker
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
 
   nginx:
-    container_name: en_shop_php_service_shop_nginx
     restart: unless-stopped
     depends_on:
       - app
@@ -75,8 +102,6 @@ services:
       context: .
       dockerfile: ./docker/nginx/Dockerfile
     volumes:
-      # Commenter la ligne suivante en production
-      - ./:/var/www:rw
       - ./docker/nginx/conf.d:/etc/nginx/conf.d:rw
 
   redis:

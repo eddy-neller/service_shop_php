@@ -41,6 +41,10 @@ help:
 include makefile.conf
 export COMPOSE_BAKE = true
 
+# Les replicas HTTP sont desservis par nginx. Surcharge ponctuelle possible :
+# `make up APP_REPLICAS=4`.
+APP_REPLICAS ?= 3
+
 ## Installation complete : build, up, vendors, cles de test
 .PHONY: install
 install:
@@ -100,10 +104,11 @@ dc:
 network:
 	@docker network create en_shop_php_edge 2>/dev/null || true
 
-## Crée et demarre les containers
+## Crée et demarre les containers (plusieurs instances de `app`)
+##   Surcharge du nombre d'instances : make up APP_REPLICAS=4
 .PHONY: up
 up: network
-	@$(DOCKER) up -d --remove-orphans
+	@$(DOCKER) up -d --remove-orphans --scale app=$(APP_REPLICAS)
 
 ## Stop et détruits les containers
 .PHONY: down
@@ -278,7 +283,7 @@ unit-suite:
 ## Run PHPUnit with code coverage (generates HTML report in coverage/)
 .PHONY: unit-coverage
 unit-coverage:
-	@$(APP) sh -c "XDEBUG_MODE=coverage vendor/bin/phpunit --coverage-html coverage/"
+	@$(APP) sh -c "XDEBUG_MODE=coverage vendor/bin/phpunit --configuration phpunit.dist.xml --coverage-html coverage/"
 
 ## Analyse statique PHPStan
 .PHONY: stan

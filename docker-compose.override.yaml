@@ -1,19 +1,51 @@
-services:
-  nginx:
-    ports:
-      - "${NGINX_EXPOSED_PORT:-20910}:80"
-    # `default` DOIT etre liste explicitement : declarer `networks:` sur un service
-    # remplace son rattachement implicite, et sans lui nginx perdrait l'acces a `app`
-    # (symptome : 502 de la passerelle, qui accuse le mauvais coupable).
-    networks:
-      - default
-      - edge
+# Surcharges de DEVELOPPEMENT LOCAL uniquement.
+#
+# Compose charge ce fichier automatiquement ; une production ne le deploie pas. Tout
+# ce qui est ici doit donc etre inutile au fonctionnement du service : confort de
+# debogage, acces direct depuis l'hote, code monte a chaud.
+#
+# C'est ce qui remplace les anciens « Commenter la ligne suivante en production ».
 
+services:
 ###> doctrine/mongodb-odm-bundle ###
   mongodb:
     ports:
       - "${MONGODB_EXPOSED_PORT:-20912}:27017"
 ###< doctrine/mongodb-odm-bundle ###
+
+  app:
+    # Composer et les outils reseau ne vivent que dans cette etape.
+    build:
+      target: dev
+    volumes:
+      # Code monte depuis l'hote : l'image embarque deja le code (`COPY . .`), ce
+      # montage ne sert qu'a voir ses modifications sans reconstruire.
+      - ./:/var/www:rw
+
+  worker:
+    build:
+      target: dev
+    volumes:
+      - ./:/var/www:rw
+
+  nginx:
+    ports:
+      - "${NGINX_EXPOSED_PORT:-20910}:80"
+    volumes:
+      - ./:/var/www:rw
+      - ./var/log/nginx:/var/log/nginx:cached
+    # `default` DOIT etre liste explicitement : declarer `networks:` sur un service
+    # remplace son rattachement implicite, et sans lui nginx perdrait l'acces a `app`
+    # (symptome : 502 de la passerelle, qui accuse le mauvais coupable).
+    networks:
+      default: {}
+      edge:
+        # Alias explicite, et NON negociable : Compose declare deja `nginx` comme
+        # alias sur chaque reseau rejoint — or les deux stacks ont un service nomme
+        # `nginx`, donc `nginx` est ambigu sur le reseau partage. La passerelle vise
+        # cet alias-ci, qui est unique. C'est l'equivalent d'un Service Kubernetes.
+        aliases:
+          - service-shop
 
   redis:
     ports:

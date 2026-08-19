@@ -11,6 +11,7 @@ use ApiPlatform\Metadata\Patch;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\OpenApi\Model;
 use App\Domain\Customer\ValueObject\CustomerStatus;
+use App\Infrastructure\Symfony\Security\RoleSet;
 use App\Presentation\Customer\Dto\CustomerPatchInput;
 use App\Presentation\Customer\Dto\CustomerPostInput;
 use App\Presentation\Customer\State\Customer\CustomerCollectionProvider;
@@ -18,7 +19,6 @@ use App\Presentation\Customer\State\Customer\CustomerGetProvider;
 use App\Presentation\Customer\State\Customer\CustomerPatchProcessor;
 use App\Presentation\Customer\State\Customer\CustomerPostProcessor;
 use App\Presentation\RouteRequirements;
-use App\Security\RoleSet;
 use DateTimeImmutable;
 use Symfony\Component\Serializer\Attribute\Groups;
 

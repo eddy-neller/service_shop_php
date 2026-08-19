@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Security;
+namespace App\Infrastructure\Symfony\Security;
 
 /**
  * Vocabulaire des roles portes par le claim `roles` du JWT.

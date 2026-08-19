@@ -29,7 +29,8 @@ n'intervient a aucun moment — ne pas raisonner sur les deux piles a la fois.
 
 Le service demarre et repond **seul**, sans la stack de `service_identity`. C'est une propriete verifiee par
 `GET /health`, a preserver. Sa base lui appartient : `docker-compose.yaml` ne pointe vers aucune
-stack externe.
+stack externe. L'override declare bien un reseau `external`, mais `make network` le cree lui-meme —
+voir « Topologie Docker ».
 
 ---
 
@@ -248,6 +249,94 @@ Tout fait du catalogue purge les **deux** collections, parce que les read models
 
 ---
 
+## Topologie Docker
+
+```text
+front ──> gateway Kong :20800 ──> nginx (alias `service-shop`) ──> app  (php-fpm:9000)
+          (back_php/gateway)      │                                worker (cron + Messenger)
+                                  │                                    │
+                                  └── reseau `en_shop_php_edge` ───────┘
+                                                                   ├─ mongodb (replica set rs0)
+                                                                   └─ redis (cache de queries)
+```
+
+### « Le service demarre seul » tient toujours, mais il faut savoir pourquoi
+
+`docker-compose.override.yaml` declare un reseau **`external`** : absent, `docker compose up`
+**echoue**. Pris tel quel, cela ferait dependre le demarrage de ce service du dépot de la passerelle
+— exactement ce que ce fichier interdit depuis le jalon 1.
+
+Ce n'est pas le cas parce que **`make network` cree le reseau lui-meme** (`docker network create …
+|| true`, idempotent), et que `make up` en depend. Creer un reseau ne suppose aucune autre stack
+demarree : `make up` puis `curl localhost:20910/health` fonctionne toujours passerelle eteinte, y
+compris apres un `docker network rm`. **Ne pas deplacer cette creation dans le depot de la
+passerelle.**
+
+Le cloisonnement, lui, est renforce et non affaibli : **seul `nginx` rejoint `en_shop_php_edge`**.
+MongoDB et Redis restent sur le reseau par defaut de la stack, donc la regle « aucun acces a la base
+de `service_identity` » est garantie **par la topologie**, pas par discipline. Un reseau unique a plat
+la retrograderait en simple convention, sans qu'aucun test ne s'en apercoive.
+
+L'alias `service-shop` est **obligatoire et explicite** : Compose declare deja `nginx` comme alias sur
+chaque reseau rejoint, or les deux stacks ont un service nomme `nginx` — `nginx` est donc ambigu sur
+le reseau partage. C'est l'equivalent d'un Service Kubernetes, et il survit a la disparition des
+`container_name`.
+
+### Une seule image, deux roles
+
+`app` et `worker` sont **le meme artefact**, distingue par `SUPERVISOR_ROLE` que lit le `[include]` de
+`supervisor.conf` : `web` ne lance que php-fpm, `worker` ne lance que cron et les deux consommateurs
+`domain_events`. L'ancre YAML `&app_image` garantit qu'ils designent la meme image.
+
+Construire deux images pour un meme code les ferait deriver en silence : **un worker qui ne tourne pas
+sur le binaire teste est une classe de panne entiere.** Ne pas separer les Dockerfile.
+
+### Le workload d'un cote, le poste de dev de l'autre
+
+`docker-compose.yaml` ne contient que ce qui doit tourner partout. Ports publies, bind mount du code
+et Xdebug vivent dans `docker-compose.override.yaml`, que Compose charge automatiquement en local et
+qu'un deploiement ne prend pas. C'est ce qui remplace les anciens « Commenter la ligne suivante en
+production » — une consigne qu'il fallait penser a appliquer devient une propriete du fichier.
+**Ne pas remettre de reglage de developpement dans le fichier de base.**
+
+Le Dockerfile suit le meme decoupage : `base` → `vendor` → `prod` / `dev`. **Xdebug, Composer,
+`nano`, `telnet` et `ping` ne sont que dans `dev`** ; l'etape `vendor` lance `composer install
+--no-dev` dans l'image, ce qui rend l'artefact reproductible et independant du poste qui l'a
+construit. Mesure : 1,80 Go avant, **769 Mo** en `prod`, contexte de build **1,1 Go → 5,9 Mo**.
+
+Deux exclusions du `.dockerignore` sont volontairement **absentes**, et doivent le rester :
+`public/bundles/` (les assets de l'UI d'API Platform — exclus, `/api/docs` rend des 404 en prod) et
+`config/jwt/public.pem` (sans lui le service ne peut valider aucun token). Seul `config/jwt/test/`
+est exclu.
+
+### Ni `container_name`, ni `fastcgi_pass` en dur sur `app` et `nginx`
+
+Docker refuse de repliquer un service portant un `container_name`. Il n'en reste que sur les
+singletons (`mongodb`, `redis`).
+
+Le `fastcgi_pass` de nginx passe par une variable et le resolveur `127.0.0.11`. **Ecrit en dur, le nom
+est resolu une seule fois au demarrage** de nginx, qui parle ensuite a une IP figee : toutes les
+repliques sauf une restent a zero requete, **sans la moindre erreur**. Mesure avant correction :
+`151627 / 0 / 0` octets de logs sur trois instances. Verification :
+
+```bash
+docker compose up -d --scale app=3
+for c in $(docker compose ps -q app); do
+  printf "%-40s %s\n" "$(docker inspect --format '{{.Name}}' $c)" \
+    "$(docker logs $c 2>&1 | grep -c 'GET /index.php')"
+done
+# 12 / 9 / 9 pour 30 requetes — la somme doit retomber sur le nombre envoye
+```
+
+Compter des **lignes** d'access log, pas des octets : le volume depend de l'etat du cache Redis, le
+nombre de requetes non. `resolver local=on` n'est pas supporte par cette build de nginx — il est
+interprete comme un nom d'hote et `nginx -t` echoue.
+
+> Routage, cloisonnement et regles de la passerelle : `back_php/gateway/AGENTS.md`.
+> Vue d'ensemble de la pile PHP : `back_php/ARCHITECTURE.md`.
+
+---
+
 ## Pieges rencontres (ne pas les re-decouvrir)
 
 - **`read: false` sur les operations sans `provider:`.** `stateOptions(entityClass:)` ne servait pas
@@ -326,8 +415,10 @@ cp .env.dist .env                     # puis renseigner APP_SECRET
 
 make install          # build + up + vendors + cles de test + index Mongo
 make up / make down
+make network          # cree `en_shop_php_edge` s'il est absent (idempotent, appele par `up`)
 make unit             # toute la suite
 make unit-suite s=... # une suite (cf. phpunit.dist.xml)
+make unit-coverage    # coverage HTML dans coverage/
 make unit-filter f=...# une classe ou une methode
 make bash-app
 make bash-db          # shell mongosh
@@ -462,4 +553,11 @@ C=$(reads); echo "miss=$((B-A)) hit=$((C-B))"   # miss > 0, hit = 0
 - [ ] Le cache des queries et son invalidation sont actifs tous les deux, ou aucun des deux.
 - [ ] Les suites a ports mockes passent **sans modification** (cf. tableau des suites).
 - [ ] Toute suite declaree dans un `phpunit.xml` local existe aussi dans `phpunit.dist.xml`.
+- [ ] Aucun reglage de developpement (port publie, bind mount, Xdebug) dans `docker-compose.yaml`.
+- [ ] Ni Xdebug ni Composer dans l'etape `prod` du Dockerfile.
+- [ ] `public/bundles/` et `config/jwt/public.pem` ne sont **pas** exclus par `.dockerignore`.
+- [ ] Aucun `container_name` sur `app`, `worker` ou `nginx` — ils doivent rester replicables.
+- [ ] `app` et `worker` partagent la meme image (ancre `&app_image`), jamais deux Dockerfile.
+- [ ] `nginx` joint `en_shop_php_edge` sous l'alias `service-shop`, et **lui seul** y est rattache.
+- [ ] `make up` fonctionne sans que la passerelle ait jamais tourne.
 - [ ] `declare(strict_types=1);` dans tout nouveau fichier PHP.

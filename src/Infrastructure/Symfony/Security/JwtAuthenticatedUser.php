@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Security;
+namespace App\Infrastructure\Symfony\Security;
 
 use Deprecated;
 use InvalidArgumentException;

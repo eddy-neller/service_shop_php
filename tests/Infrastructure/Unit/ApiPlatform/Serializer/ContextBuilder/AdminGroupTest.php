@@ -7,7 +7,7 @@ namespace App\Tests\Infrastructure\Unit\ApiPlatform\Serializer\ContextBuilder;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\State\SerializerContextBuilderInterface;
 use App\Infrastructure\ApiPlatform\Serializer\ContextBuilder\AdminGroup;
-use App\Security\RoleSet;
+use App\Infrastructure\Symfony\Security\RoleSet;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\MockObject\Stub;
 use PHPUnit\Framework\TestCase;

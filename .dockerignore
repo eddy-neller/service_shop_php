@@ -1,0 +1,50 @@
+# Contexte de build : ce qui n'a rien a faire dans l'image.
+#
+# Sans ce fichier, `COPY . .` produisait une couche de 1,03 Go pour une image de
+# 1,8 Go — l'essentiel etant des journaux et du cache de developpement.
+
+# --- Etat de developpement, jamais dans un artefact ---
+# var/log pesait 660 Mo et var/cache 84 Mo. L'entrypoint recree ces dossiers au
+# demarrage : les embarquer n'apporte rien et fige le cache d'un autre poste.
+/var/
+
+# --- Dependances : reconstruites par l'etape `vendor` avec --no-dev ---
+# Copiees depuis l'hote, elles embarquaient les 15 paquets de require-dev
+# (phpunit, phpstan, rector, grumphp, faker) dans l'image de production.
+/vendor/
+
+# --- Uploads : 178 Mo d'images produit, propres a un environnement ---
+# Elles partiront sur S3 ; en attendant, chaque build les recopiait.
+/public/uploads/
+
+# --- Secrets ---
+# .env porte APP_SECRET. La production passe par des variables d'environnement,
+# et Symfony retombe sur .env.dist, qui reste dans le contexte.
+/.env
+/.env.local
+/.env.*.local
+/makefile.conf
+
+# --- Historique et outillage ---
+/.git/
+/.gitignore
+/.idea/
+/.claude/
+/.codex/
+/coverage/
+/.phpunit.cache/
+/.php-cs-fixer.cache
+/.phpcs-cache
+
+# --- Cles ---
+# Seule la paire de TEST sort : elle est versionnee volontairement (cf. AGENTS.md)
+# et ne sert qu'a la suite de tests, qui tourne sur le code monte depuis l'hote.
+# `config/jwt/public.pem` DOIT rester : sans elle le service ne peut valider aucun
+# token, et l'image ne sert a rien.
+/config/jwt/test/
+
+# --- Documentation et configuration locale ---
+/docs/
+*.md
+/phpunit.xml
+/phpstan.neon

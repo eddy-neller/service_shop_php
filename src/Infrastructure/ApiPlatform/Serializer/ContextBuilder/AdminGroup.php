@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Infrastructure\ApiPlatform\Serializer\ContextBuilder;
 
 use ApiPlatform\State\SerializerContextBuilderInterface;
-use App\Security\RoleSet;
+use App\Infrastructure\Symfony\Security\RoleSet;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\DependencyInjection\Attribute\AsDecorator;
 use Symfony\Component\DependencyInjection\Attribute\AutowireDecorated;
