@@ -26,6 +26,11 @@ api_platform:
             vary: ['Content-Type', 'Authorization', 'Origin']
             etag: true
 
+    # Les ressources sont lues via des State Providers et ecrites via des Processors,
+    # pas par l'integration Doctrine d'API Platform. L'invalidation est donc declenchee
+    # explicitement depuis CacheInvalidationMiddleware apres le commit MongoDB.
+    http_cache: ~
+
     # Resolution par is_a() : le 1er match dans l'ordre gagne — specifiques d'abord,
     # puis les categories semantiques du domaine, puis le fallback.
     exception_to_status:
@@ -33,3 +38,26 @@ api_platform:
         App\Domain\SharedKernel\Exception\ConflictInterface: 409
         App\Domain\SharedKernel\Exception\EntityNotFoundInterface: 404
         App\Domain\SharedKernel\Exception\DomainException: 400
+
+when@dev:
+    api_platform:
+        http_cache:
+            invalidation:
+                enabled: true
+                urls: ['%env(VARNISH_URL)%']
+
+when@prod:
+    api_platform:
+        http_cache:
+            invalidation:
+                enabled: true
+                urls: ['%env(VARNISH_URL)%']
+
+when@test:
+    api_platform:
+        http_cache:
+            invalidation:
+                enabled: true
+                # Aucun appel HTTP depuis PHPUnit ; le double conserve le meme contrat
+                # que le purger Varnish et laisse les reponses API inchangées.
+                purger: App\Tests\Infrastructure\Double\HttpCache\NullPurger

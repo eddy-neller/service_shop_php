@@ -34,16 +34,9 @@ services:
     volumes:
       - ./:/var/www:rw
       - ./var/log/nginx:/var/log/nginx:cached
-    # `default` DOIT etre liste explicitement : declarer `networks:` sur un service
-    # remplace son rattachement implicite, et sans lui nginx perdrait l'acces a `app`
-    # (symptome : 502 de la passerelle, qui accuse le mauvais coupable).
     networks:
       default: {}
       edge:
-        # Alias explicite, et NON negociable : Compose declare deja `nginx` comme
-        # alias sur chaque reseau rejoint — or les deux stacks ont un service nomme
-        # `nginx`, donc `nginx` est ambigu sur le reseau partage. La passerelle vise
-        # cet alias-ci, qui est unique. C'est l'equivalent d'un Service Kubernetes.
         aliases:
           - service-shop
 
@@ -51,7 +44,7 @@ services:
     ports:
       - "${REDIS_EXPOSED_PORT:-20913}:6379"
 
-# Seul `nginx` rejoint le reseau de la passerelle. MongoDB et Redis restent sur le
+# Seul `nginx` rejoint le reseau de la passerelle en developpement. MongoDB, Redis et Varnish restent sur le
 # reseau par defaut de la stack : c'est ce qui garantit *par la topologie* qu'aucun
 # autre service ne peut joindre cette base, et inversement (cf. AGENTS.md).
 #

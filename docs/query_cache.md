@@ -132,5 +132,5 @@ C=$(reads)
 Une écriture entre les deux relectures doit faire repasser le compteur à une valeur non nulle.
 
 Pour le cache HTTP annoncé aux clients sur les lectures publiques, voir
-[`varnish_cache.md`](varnish_cache.md) — il est indépendant de celui-ci et n'est toujours pas
-invalidé.
+[`varnish_cache.md`](varnish_cache.md) — il est indépendant de Redis et est invalidé par BAN depuis
+le même middleware, après le commit MongoDB.

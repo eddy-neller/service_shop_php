@@ -1,15 +1,6 @@
 name: en_shop_php_service_shop
 
-# Ce fichier decrit le WORKLOAD : ce que le service est, en developpement comme en
-# production. Tout ce qui n'existe que sur un poste de developpement — ports publies,
-# code monte depuis l'hote — vit dans docker-compose.override.yaml, que
-# Compose charge automatiquement en local et qu'une production ne deploie pas.
-#
-# Consequence a preserver : plus aucun « commenter cette ligne en production ». Une
-# etape manuelle de ce genre s'oublie une fois, et la panne est silencieuse.
-
 services:
-  ###> doctrine/mongodb-odm-bundle ###
   mongodb:
     container_name: en_shop_php_service_shop_mongodb
     restart: unless-stopped
@@ -18,22 +9,13 @@ services:
       dockerfile: ./Dockerfile
     environment:
       - MONGO_INITDB_DATABASE=${MONGODB_DB:-app}
-      # You should definitely set a root username and password in production
       - MONGO_INITDB_ROOT_USERNAME=${MONGODB_USERNAME:-}
       - MONGO_INITDB_ROOT_PASSWORD=${MONGODB_PASSWORD:-}
-    # MongoDB demande 64 000 descripteurs ; Docker en accorde 1 024 par defaut.
-    # Sous cette limite, mongod ne se degrade pas : il leve `TooManyFilesOpen` en
-    # creant un eventfd, puis **segfault** et redemarre. La suite fonctionnelle le
-    # declenche de facon fiable — chaque test ouvre une connexion, purge les
-    # collections et repose les index — et les tests tombent alors avec un
-    # `ReplicaSetNoPrimary` qui ne dit rien de la vraie cause.
     ulimits:
       nofile:
         soft: 64000
         hard: 64000
     healthcheck:
-      # Premiere passe: rs.status() leve (NotYetInitialized) et on initie.
-      # Passes suivantes: rs.status().ok vaut 1, le conteneur devient healthy.
       test: >
         mongosh --quiet
         --username "$$MONGO_INITDB_ROOT_USERNAME"
@@ -49,27 +31,12 @@ services:
       start_period: 20s
     volumes:
       - mongodb_data:/data/db:rw
-      # You may use a bind-mounted host directory instead, so that it is harder to accidentally remove the volume and lose all your data!
-      # - ./docker/mongodb/data:/data/db:rw
-  ###< doctrine/mongodb-odm-bundle ###
 
-  # `app` et `worker` partagent la MEME image : meme code, meme dependances, seul le
-  # role Supervisor change (cf. docker/app/supervisor/supervisor.conf).
-  #
-  # Ils sont separes parce qu'ils ne scalent pas sur le meme signal : le web suit le
-  # trafic HTTP, le worker la profondeur de la file. Les garder ensemble imposait de
-  # multiplier les workers en multipliant le web.
-  #
-  # Pas de `container_name` : Docker refuse de scaler un service qui en porte un.
-  # Les autres conteneurs les joignent par leur nom de service (`app`, `worker`),
-  # que Compose declare comme alias reseau.
   app:
     restart: unless-stopped
     build: &app_build
       context: .
       dockerfile: ./docker/app/Dockerfile
-      # Etape `prod` : sans Composer ni outil de diagnostic, et
-      # avec un vendor installe en --no-dev. L'override bascule sur `dev` en local.
       target: prod
     image: &app_image en_shop_php_service_shop_app:latest
     depends_on:
@@ -80,6 +47,7 @@ services:
     environment:
       SUPERVISOR_ROLE: web
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      VARNISH_URL: ${VARNISH_URL:-http://varnish}
 
   worker:
     restart: unless-stopped
@@ -93,16 +61,30 @@ services:
     environment:
       SUPERVISOR_ROLE: worker
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      VARNISH_URL: ${VARNISH_URL:-http://varnish}
 
   nginx:
     restart: unless-stopped
     depends_on:
       - app
+    networks:
+      default:
+        aliases:
+          - shop-nginx
     build:
       context: .
       dockerfile: ./docker/nginx/Dockerfile
     volumes:
       - ./docker/nginx/conf.d:/etc/nginx/conf.d:rw
+
+  varnish:
+    container_name: en_shop_php_service_shop_varnish
+    restart: unless-stopped
+    depends_on:
+      - nginx
+    build:
+      context: ./docker/varnish
+      dockerfile: ./Dockerfile
 
   redis:
       container_name: en_shop_php_service_shop_redis
@@ -117,6 +99,4 @@ services:
           retries: 5
 
 volumes:
-###> doctrine/mongodb-odm-bundle ###
   mongodb_data:
-###< doctrine/mongodb-odm-bundle ###

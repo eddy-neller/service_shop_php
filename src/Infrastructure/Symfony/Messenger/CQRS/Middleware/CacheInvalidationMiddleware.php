@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Infrastructure\Symfony\Messenger\CQRS\Middleware;
 
+use ApiPlatform\HttpCache\PurgerInterface;
 use App\Domain\SharedKernel\Event\DomainEventInterface;
+use App\Infrastructure\Adapter\Cache\CatalogHttpCacheTags;
 use App\Infrastructure\Adapter\Cache\DomainEventCacheTags;
 use App\Infrastructure\Adapter\Cache\QueryCacheInterface;
 use App\Infrastructure\Symfony\Messenger\Event\PublishedDomainEventCollector;
@@ -29,6 +31,8 @@ final readonly class CacheInvalidationMiddleware implements MiddlewareInterface
         private PublishedDomainEventCollector $collector,
         private DomainEventCacheTags $cacheTags,
         private QueryCacheInterface $cache,
+        private CatalogHttpCacheTags $httpCacheTags,
+        private PurgerInterface $httpCachePurger,
     ) {
     }
 
@@ -49,17 +53,24 @@ final readonly class CacheInvalidationMiddleware implements MiddlewareInterface
     private function invalidate(array $events): void
     {
         $tags = [];
+        $httpTags = [];
 
         foreach ($events as $event) {
             foreach ($this->cacheTags->forEvent($event) as $tag) {
                 $tags[$tag] = true;
             }
+
+            foreach ($this->httpCacheTags->forEvent($event) as $tag) {
+                $httpTags[$tag] = true;
+            }
         }
 
-        if ([] === $tags) {
-            return;
+        if ([] !== $tags) {
+            $this->cache->invalidateTags(array_keys($tags));
         }
 
-        $this->cache->invalidateTags(array_keys($tags));
+        if ([] !== $httpTags) {
+            $this->httpCachePurger->purge(array_keys($httpTags));
+        }
     }
 }

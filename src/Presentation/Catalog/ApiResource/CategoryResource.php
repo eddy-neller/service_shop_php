@@ -32,8 +32,9 @@ use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
             uriTemplate: '/categories/{id}',
             requirements: ['id' => RouteRequirements::UUID],
             cacheHeaders: [
-                'max_age' => 21600,
+                'max_age' => 0,
                 'shared_max_age' => 86400,
+                'public' => true,
             ],
             name: self::PREFIX_NAME . 'get',
             provider: CategoryGetProvider::class,
@@ -66,8 +67,9 @@ use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
         new GetCollection(
             uriTemplate: '/categories',
             cacheHeaders: [
-                'max_age' => 21600,
+                'max_age' => 0,
                 'shared_max_age' => 86400,
+                'public' => true,
             ],
             openapi: new Model\Operation(
                 parameters: [

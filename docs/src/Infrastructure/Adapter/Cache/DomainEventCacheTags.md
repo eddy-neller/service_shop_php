@@ -1,8 +1,9 @@
 # `DomainEventCacheTags`
 
-`DomainEventCacheTags` est la source unique qui traduit un `DomainEventInterface` en tags de cache
-à invalider. Elle vit en Infrastructure, car elle connaît la convention de nommage des tags Redis,
-mais ne dépend ni de Symfony Cache ni de Redis : elle ne renvoie qu'une `list<string>`.
+`DomainEventCacheTags` traduit un `DomainEventInterface` en tags du cache de queries Redis à
+invalider. Elle vit en Infrastructure, car elle connaît cette convention de nommage, mais ne dépend
+ni de Symfony Cache ni de Redis : elle ne renvoie qu'une `list<string>`. `CatalogHttpCacheTags`
+effectue la traduction distincte vers les IRIs `Cache-Tags` d'API Platform, consommés par Varnish.
 
 ## Place dans le cycle d'une commande
 
@@ -18,12 +19,14 @@ Commande
   -> CacheInvalidationMiddleware
        -> DomainEventCacheTags::forEvent()
        -> QueryCacheInterface::invalidateTags()
+       -> CatalogHttpCacheTags::forEvent()
+       -> PurgerInterface::purge() (BAN Varnish)
   -> réponse HTTP
 ```
 
-L'invalidation ne passe pas par le worker d'outbox : elle doit avoir lieu avant la réponse pour
-préserver la lecture après écriture. Le worker conserve son rôle de consommation asynchrone des
-événements.
+Les deux invalidations ne passent pas par le worker d'outbox : elles doivent avoir lieu avant la
+réponse pour préserver la lecture après écriture. Le worker conserve son rôle de consommation
+asynchrone des événements.
 
 Le middleware appelle également l'invalidation lorsqu'une commande lève une exception. Une partie
 du travail peut déjà avoir été engagée ; il vaut alors mieux évincer une entrée que servir un état
@@ -72,6 +75,7 @@ notamment le prix courant.
   périmée après une commande réussie.
 
 Les cas de classification sont couverts par
-`tests/Infrastructure/Unit/Adapter/Cache/DomainEventCacheTagsTest.php`. La coordination du commit,
-de la collecte et de la purge est couverte par le test du middleware. Pour le contrat global du
-cache de queries, voir [`query_cache.md`](../../../../query_cache.md).
+`tests/Infrastructure/Unit/Adapter/Cache/DomainEventCacheTagsTest.php` et les traductions HTTP par
+`CatalogHttpCacheTagsTest.php`. La coordination du commit, de la collecte et des deux purges est
+couverte par le test du middleware. Pour le contrat global du cache de queries, voir
+[`query_cache.md`](../../../../query_cache.md).

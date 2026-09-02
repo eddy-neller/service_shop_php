@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Tests\Infrastructure\Unit\Symfony\Messenger\CQRS\Middleware;
 
+use ApiPlatform\HttpCache\PurgerInterface;
 use App\Domain\Catalog\Event\Category\CategoryRenamedEvent;
 use App\Domain\Catalog\Event\Product\ProductCreatedEvent;
 use App\Domain\Catalog\ValueObject\CategoryId;
 use App\Domain\Catalog\ValueObject\ProductId;
+use App\Infrastructure\Adapter\Cache\CatalogHttpCacheTags;
 use App\Infrastructure\Adapter\Cache\DomainEventCacheTags;
 use App\Infrastructure\Adapter\Cache\QueryCacheInterface;
 use App\Infrastructure\Symfony\Messenger\CQRS\Middleware\CacheInvalidationMiddleware;
@@ -32,17 +34,22 @@ final class CacheInvalidationMiddlewareTest extends TestCase
 
     private QueryCacheInterface&MockObject $cache;
 
+    private PurgerInterface&MockObject $httpCachePurger;
+
     private CacheInvalidationMiddleware $middleware;
 
     protected function setUp(): void
     {
         $this->collector = new PublishedDomainEventCollector();
         $this->cache = $this->createMock(QueryCacheInterface::class);
+        $this->httpCachePurger = $this->createMock(PurgerInterface::class);
 
         $this->middleware = new CacheInvalidationMiddleware(
             $this->collector,
             new DomainEventCacheTags(),
             $this->cache,
+            new CatalogHttpCacheTags(),
+            $this->httpCachePurger,
         );
     }
 
@@ -58,6 +65,18 @@ final class CacheInvalidationMiddlewareTest extends TestCase
 
                 return ['categories-collection', 'products-collection'] === $tags;
             }));
+        $this->httpCachePurger->expects($this->once())
+            ->method('purge')
+            ->with($this->callback(static function (array $tags): bool {
+                sort($tags);
+
+                return [
+                    '/api/shop/categories',
+                    '/api/shop/categories/' . self::CATEGORY_ID,
+                    '/api/shop/products',
+                    '/api/shop/products/' . self::PRODUCT_ID,
+                ] === $tags;
+            }));
 
         $this->middleware->handle(new Envelope(new stdClass()), $this->passthroughStack());
     }
@@ -65,6 +84,7 @@ final class CacheInvalidationMiddlewareTest extends TestCase
     public function testItPurgesNothingWhenNoEventWasPublished(): void
     {
         $this->cache->expects($this->never())->method('invalidateTags');
+        $this->httpCachePurger->expects($this->never())->method('purge');
 
         $this->middleware->handle(new Envelope(new stdClass()), $this->passthroughStack());
     }
@@ -78,6 +98,7 @@ final class CacheInvalidationMiddlewareTest extends TestCase
         $this->collector->record($this->categoryRenamed());
 
         $this->cache->expects($this->once())->method('invalidateTags');
+        $this->httpCachePurger->expects($this->once())->method('purge');
 
         try {
             $this->middleware->handle(new Envelope(new stdClass()), $this->throwingStack());

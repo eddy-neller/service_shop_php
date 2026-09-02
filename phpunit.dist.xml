@@ -14,9 +14,6 @@
         <ini name="error_reporting" value="-1"/>
         <server name="APP_ENV" value="test" force="true"/>
         <server name="SHELL_VERBOSITY" value="-1"/>
-        <!-- Normalement pose par la recette Flex de framework-bundle, ecartee ici
-             au profit d'un squelette ecrit a la main. -->
-        <server name="KERNEL_CLASS" value="App\Kernel"/>
     </php>
 
     <!-- Ce fichier est la reference : il doit decrire l'integralite de `tests/`.

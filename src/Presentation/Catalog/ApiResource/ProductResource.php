@@ -35,8 +35,9 @@ use Symfony\Component\Serializer\Attribute\Groups;
             uriTemplate: '/products/{id}',
             requirements: ['id' => RouteRequirements::UUID],
             cacheHeaders: [
-                'max_age' => 21600,
+                'max_age' => 0,
                 'shared_max_age' => 86400,
+                'public' => true,
             ],
             name: self::PREFIX_NAME . 'get',
             provider: ProductGetProvider::class,
@@ -79,8 +80,9 @@ use Symfony\Component\Serializer\Attribute\Groups;
         new GetCollection(
             uriTemplate: '/products',
             cacheHeaders: [
-                'max_age' => 21600,
+                'max_age' => 0,
                 'shared_max_age' => 86400,
+                'public' => true,
             ],
             openapi: new Model\Operation(
                 parameters: [

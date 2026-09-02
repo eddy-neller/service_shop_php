@@ -61,6 +61,14 @@ when@dev:
     App\Infrastructure\Symfony\DataFixtures\:
       resource: '../src/Infrastructure/Symfony/DataFixtures/'
 
+    ApiPlatform\HttpCache\PurgerInterface:
+      alias: api_platform.http_cache.purger.varnish.ban
+
+when@prod:
+  services:
+    ApiPlatform\HttpCache\PurgerInterface:
+      alias: api_platform.http_cache.purger.varnish.ban
+
 when@test:
   services:
     # Rendu public pour que les tests fonctionnels puissent forger des tokens
@@ -68,3 +76,11 @@ when@test:
     test.jwt_encoder:
       alias: lexik_jwt_authentication.encoder
       public: true
+
+    # Purger bouchon choisi par api_platform.http_cache.invalidation.purger.
+    # Les tests API ne doivent ni joindre Docker par HTTP ni recevoir de Cache-Tags
+    # supplementaire dans leurs assertions de reponse.
+    App\Tests\Infrastructure\Double\HttpCache\NullPurger: ~
+
+    ApiPlatform\HttpCache\PurgerInterface:
+      alias: App\Tests\Infrastructure\Double\HttpCache\NullPurger

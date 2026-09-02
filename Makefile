@@ -110,6 +110,11 @@ network:
 up: network
 	@$(DOCKER) up -d --remove-orphans --scale app=$(APP_REPLICAS)
 
+## Cree et demarre la topologie de production (Varnish est l'entree `service-shop`)
+.PHONY: up-prod
+up-prod: network
+	@$(DOCKER) -f docker-compose.yaml -f docker-compose.prod.yaml up -d --remove-orphans --scale app=$(APP_REPLICAS)
+
 ## Stop et détruits les containers
 .PHONY: down
 down:

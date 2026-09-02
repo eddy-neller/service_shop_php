@@ -240,9 +240,10 @@ transaction, sans worker ni comptage de references.
 
 ### L'invalidation de cache ne passe pas par le worker
 
-Elle vit dans `CacheInvalidationMiddleware`, sur `command.bus`, et purge les tags **apres le commit
-et avant la reponse**. Confiee au worker, elle arriverait quelques dizaines de millisecondes trop
-tard : le client qui relit juste apres son ecriture ne verrait pas sa propre modification.
+Elle vit dans `CacheInvalidationMiddleware`, sur `command.bus`, et purge les tags Redis ainsi que
+les tags HTTP Varnish **apres le commit et avant la reponse**. Confiee au worker, elle arriverait
+quelques dizaines de millisecondes trop tard : le client qui relit juste apres son ecriture ne
+verrait pas sa propre modification.
 
 Tout fait du catalogue purge les **deux** collections, parce que les read models se citent : un
 `ProductItem` porte le titre de sa categorie, un `CategoryItem` porte `nbProduct`.
@@ -251,14 +252,19 @@ Tout fait du catalogue purge les **deux** collections, parce que les read models
 
 ## Topologie Docker
 
+En production (`make up-prod`) :
+
 ```text
-front ──> gateway Kong :20800 ──> nginx (alias `service-shop`) ──> app  (php-fpm:9000)
-          (back_php/gateway)      │                                worker (cron + Messenger)
-                                  │                                    │
-                                  └── reseau `en_shop_php_edge` ───────┘
-                                                                   ├─ mongodb (replica set rs0)
-                                                                   └─ redis (cache de queries)
+front ──> gateway Kong :20800 ──> varnish (alias `service-shop`) ──> nginx ──> app (php-fpm:9000)
+          (back_php/gateway)      │                                          worker (cron + Messenger)
+                                  │                                              │
+                                  └── reseau `en_shop_php_edge` ────────────────┘
+                                                                             ├─ mongodb (replica set rs0)
+                                                                             └─ redis (cache de queries)
 ```
+
+En developpement (`make up`), l'entree `service-shop` et le port local 20910 visent directement
+nginx afin que le profiler Symfony decrive chaque requete.
 
 ### « Le service demarre seul » tient toujours, mais il faut savoir pourquoi
 
@@ -272,15 +278,20 @@ demarree : `make up` puis `curl localhost:20910/health` fonctionne toujours pass
 compris apres un `docker network rm`. **Ne pas deplacer cette creation dans le depot de la
 passerelle.**
 
-Le cloisonnement, lui, est renforce et non affaibli : **seul `nginx` rejoint `en_shop_php_edge`**.
-MongoDB et Redis restent sur le reseau par defaut de la stack, donc la regle « aucun acces a la base
-de `service_identity` » est garantie **par la topologie**, pas par discipline. Un reseau unique a plat
-la retrograderait en simple convention, sans qu'aucun test ne s'en apercoive.
+Le cloisonnement, lui, est renforce et non affaibli : en **production**, seul `varnish` rejoint
+`en_shop_php_edge`; en **developpement**, l'override y attache directement `nginx` pour conserver un
+profiler fiable. MongoDB, Redis et le service non expose restent sur le reseau par defaut de la
+stack, donc la regle « aucun acces a la base de `service_identity` » est garantie **par la
+topologie**, pas par discipline. Un reseau unique a plat la retrograderait en simple convention,
+sans qu'aucun test ne s'en apercoive.
 
-L'alias `service-shop` est **obligatoire et explicite** : Compose declare deja `nginx` comme alias sur
-chaque reseau rejoint, or les deux stacks ont un service nomme `nginx` — `nginx` est donc ambigu sur
-le reseau partage. C'est l'equivalent d'un Service Kubernetes, et il survit a la disparition des
+L'alias `service-shop` est **obligatoire et explicite** : il est porte par `varnish` en production et
+par `nginx` en developpement. Les deux noms generiques sont ambigus sur le reseau partage avec
+`service_identity`. C'est l'equivalent d'un Service Kubernetes, et il survit a la disparition des
 `container_name`.
+
+Le backend Varnish vise de meme l'alias prive **`shop-nginx`**, jamais `nginx` : Varnish rejoint aussi
+le reseau partage et `nginx` y resoudrait sinon l'instance de `service_identity` selon l'ordre DNS.
 
 ### Une seule image, deux roles
 
@@ -312,7 +323,7 @@ est exclu.
 ### Ni `container_name`, ni `fastcgi_pass` en dur sur `app` et `nginx`
 
 Docker refuse de repliquer un service portant un `container_name`. Il n'en reste que sur les
-singletons (`mongodb`, `redis`).
+singletons (`mongodb`, `redis`, `varnish`).
 
 Le `fastcgi_pass` de nginx passe par une variable et le resolveur `127.0.0.11`. **Ecrit en dur, le nom
 est resolu une seule fois au demarrage** de nginx, qui parle ensuite a une IP figee : toutes les
@@ -334,6 +345,7 @@ interprete comme un nom d'hote et `nginx -t` echoue.
 
 > Routage, cloisonnement et regles de la passerelle : `back_php/gateway/AGENTS.md`.
 > Vue d'ensemble de la pile PHP : `back_php/ARCHITECTURE.md`.
+> Detail du workload Compose : [`docs/docker_compose_architecture.md`](docs/docker_compose_architecture.md).
 
 ---
 
@@ -389,8 +401,14 @@ interprete comme un nom d'hote et `nginx -t` echoue.
   `ErrorHandler::register(null, false)` et enregistre un gestionnaire d'exceptions global a chaque
   boot, sans jamais le restaurer — PHPUnit 11 marque alors tous les tests comme *risky*. Ne pas
   « corriger » cela avec `failOnRisky="false"`.
-- **Pas de Symfony Flex** dans ce squelette : la configuration est ecrite a la main et reste
-  deterministe. Consequence, `KERNEL_CLASS` doit etre declare a la main dans `phpunit.dist.xml`.
+- **Flex est bien installe, mais le squelette n'a pas ete genere par lui.** La nuance compte, parce
+  que la version courte (« pas de Flex ici ») est fausse et se verifie en trois secondes :
+  `symfony/flex` est dans `require`, autorise dans `allow-plugins`, et `symfony.lock` porte
+  **24 recettes appliquees** — dont les marqueurs `###> phpunit/phpunit ###` du `.gitignore`.
+  Ce qui est vrai, c'est que `config/` a ete ecrit a la main et non depose par `symfony/skeleton`,
+  et que `allow-contrib: false` limite les recettes a celles du depot officiel.
+  Consequence pratique inchangee : **rien ne declare `KERNEL_CLASS`**, il est donc pose a la main
+  dans `phpunit.dist.xml`. Ne pas le retirer en croyant qu'une recette le fournira.
 - **`secret_key` n'est pas requis** par `lexik/jwt-authentication-bundle` en validation seule :
   `public_key` suffit. Verifie en conditions reelles.
 - **Le prefixe de route de l'emetteur est `/api/auth/…`**, pas `/…` : l'endpoint de login est
@@ -415,6 +433,7 @@ cp .env.dist .env                     # puis renseigner APP_SECRET
 
 make install          # build + up + vendors + cles de test + index Mongo
 make up / make down
+make up-prod          # topologie de production : Varnish porte `service-shop`
 make network          # cree `en_shop_php_edge` s'il est absent (idempotent, appele par `up`)
 make unit             # toute la suite
 make unit-suite s=... # une suite (cf. phpunit.dist.xml)
@@ -558,6 +577,6 @@ C=$(reads); echo "miss=$((B-A)) hit=$((C-B))"   # miss > 0, hit = 0
 - [ ] `public/bundles/` et `config/jwt/public.pem` ne sont **pas** exclus par `.dockerignore`.
 - [ ] Aucun `container_name` sur `app`, `worker` ou `nginx` — ils doivent rester replicables.
 - [ ] `app` et `worker` partagent la meme image (ancre `&app_image`), jamais deux Dockerfile.
-- [ ] `nginx` joint `en_shop_php_edge` sous l'alias `service-shop`, et **lui seul** y est rattache.
+- [ ] En dev, `nginx` joint `en_shop_php_edge` sous l'alias `service-shop`; en prod, c'est `varnish`.
 - [ ] `make up` fonctionne sans que la passerelle ait jamais tourne.
 - [ ] `declare(strict_types=1);` dans tout nouveau fichier PHP.
