@@ -33,7 +33,7 @@ Varnish rejoint à la fois `edge` et `default`. Il vise donc nginx sous l'alias 
 | `mongodb` | catalogue et outbox MongoDB | singleton, volume `mongodb_data`, replica set `rs0` |
 | `redis` | cache applicatif de queries partagé | singleton dédié à Shop |
 | `app` | PHP-FPM et requêtes HTTP | attend MongoDB et Redis sains |
-| `worker` | cron et consommateurs de l’outbox | même image que `app`, attend les mêmes dépendances |
+| `worker` | consommateurs de l’outbox | même image que `app`, attend les mêmes dépendances |
 | `nginx` | proxy FastCGI, backend privé de Varnish | attend `app` |
 | `varnish` | cache HTTP public et réception des BAN | attend nginx |
 
@@ -48,7 +48,14 @@ l’agrégat et de l’outbox.
 `en_shop_php_service_shop_app:latest`. `SUPERVISOR_ROLE` sélectionne les processus :
 
 - `web` démarre PHP-FPM ;
-- `worker` démarre cron et les deux consommateurs `domain_events`.
+- `worker` démarre les deux consommateurs `domain_events`.
+
+### Pas de cron dans le worker
+
+Le worker est **répliqué** : une tâche planifiée qui y vivrait s’exécuterait une fois par réplique.
+cron en a été retiré le 2026-09-14 — sa crontab ne contenait aucune tâche. Une tâche récurrente, le
+jour où il y en aura une, tourne **en une seule instance** : un CronJob Kubernetes, ou à défaut un
+conteneur dédié non répliqué. Jamais dans `worker`.
 
 Les deux rôles peuvent ainsi évoluer indépendamment sans exécuter des versions différentes du code.
 `app` n’a pas de `container_name`, ce qui autorise `make up APP_REPLICAS=…`.

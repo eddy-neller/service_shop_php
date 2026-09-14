@@ -256,7 +256,7 @@ En production (`make up-prod`) :
 
 ```text
 front ──> gateway Kong :20800 ──> varnish (alias `service-shop`) ──> nginx ──> app (php-fpm:9000)
-          (back_php/gateway)      │                                          worker (cron + Messenger)
+          (back_php/gateway)      │                                          worker (Messenger)
                                   │                                              │
                                   └── reseau `en_shop_php_edge` ────────────────┘
                                                                              ├─ mongodb (replica set rs0)
@@ -296,8 +296,9 @@ le reseau partage et `nginx` y resoudrait sinon l'instance de `service_identity`
 ### Une seule image, deux roles
 
 `app` et `worker` sont **le meme artefact**, distingue par `SUPERVISOR_ROLE` que lit le `[include]` de
-`supervisor.conf` : `web` ne lance que php-fpm, `worker` ne lance que cron et les deux consommateurs
-`domain_events`. L'ancre YAML `&app_image` garantit qu'ils designent la meme image.
+`supervisor.conf` : `web` ne lance que php-fpm, `worker` ne lance que les deux consommateurs
+`domain_events`. Pas de cron : replique, le worker executerait chaque tache une fois par instance —
+voir `docs/docker_compose_architecture.md`. L'ancre YAML `&app_image` garantit qu'ils designent la meme image.
 
 Construire deux images pour un meme code les ferait deriver en silence : **un worker qui ne tourne pas
 sur le binaire teste est une classe de panne entiere.** Ne pas separer les Dockerfile.

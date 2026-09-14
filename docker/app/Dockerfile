@@ -12,7 +12,7 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     supervisor procps acl \
-    git cron curl zip unzip \
+    git curl zip unzip \
     libpq-dev libzip-dev libxml2-dev libicu-dev \
     librabbitmq-dev libssl-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -22,12 +22,12 @@ RUN docker-php-ext-install xml zip sockets opcache intl
 RUN docker-php-ext-enable apcu amqp redis xml zip sockets opcache intl mongodb
 
 COPY docker/app/php-fpm/php.ini /usr/local/etc/php/php.ini
-COPY docker/app/cron/crontab /etc/crontab
 
 RUN echo "apc.enabled=1" >> /usr/local/etc/php/conf.d/docker-php-ext-apcu.ini \
     && echo "apc.enable_cli=1" >> /usr/local/etc/php/conf.d/docker-php-ext-apcu.ini
 
-# Une seule image, deux roles : `web` (php-fpm) et `worker` (messenger + cron).
+# Une seule image, deux roles : `web` (php-fpm) et `worker` (consommateurs Messenger).
+# Pas de cron : replique, le worker executerait chaque tache une fois par instance.
 # Le role est lu par supervisor.conf dans son [include]. Defaut `web` pour qu'un
 # `docker run` nu serve des requetes sans configuration supplementaire.
 ENV SUPERVISOR_ROLE=web
