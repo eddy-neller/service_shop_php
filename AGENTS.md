@@ -459,22 +459,59 @@ make jwt-test-keys    # regenere la paire de test
 local est gitignore et peut le surcharger, mais une suite qui n'existerait que la-bas ne serait
 jouee nulle part en CI — et l'oubli passerait pour un run vert.
 
+Regles :
+
+- **Un test hors de toute suite n'est jamais joue**, meme par `make unit` : PHPUnit ne decouvre que
+  les repertoires et fichiers declares dans `<testsuites>`. Aucune erreur, aucun avertissement.
+- **Toute nouvelle suite est declaree dans `phpunit.dist.xml` et dans ce tableau, dans le meme
+  commit.** Meme ordre dans les deux, pour qu'un ecart saute aux yeux.
+- **Un renommage de suite se reporte partout ou elle est citee** : ce tableau, les `AGENTS.md` de
+  couche, les commandes `make unit-suite s=…` documentees. Un nom obsolete fait echouer la commande
+  sans rien dire du test qu'elle etait censee lancer.
+- **« Touche Mongo » = oui** : la suite ecrit dans `service_shop_test`, exige `make up` et le replica
+  set, et n'est pas executable hors de la stack. Une suite a « non » ne doit jamais en dependre —
+  `api.health`, qui boote le noyau sans heriter de `BaseTest`, en est l'exemple.
+- **Un fichier `*Test.php` abstrait** (`BaseTest`) n'appartient a aucune suite, et c'est normal.
+
 | Suite | Repertoire | Touche Mongo |
 |---|---|---|
-| `domain.catalog` | `tests/Domain/Catalog/Unit` | non |
 | `appli.catalog` | `tests/Application/Unit/Catalog/UseCase` | non |
-| `pres.state.catalog` | `tests/Presentation/Unit/State/Catalog` | non |
-| `infra.symfony.command` | `tests/Infrastructure/Unit/Symfony/Command` | non |
+| `appli.customer` | `tests/Application/Unit/Customer/UseCase` | non |
+| `appli.ordering` | `tests/Application/Unit/Ordering` | non |
+| `appli.shared` | `tests/Application/Unit/Shared` | non |
+| `domain.catalog` | `tests/Domain/Catalog/Unit` | non |
+| `domain.customer` | `tests/Domain/Customer/Unit` | non |
+| `domain.ordering` | `tests/Domain/Ordering/Unit` | non |
+| `domain.shared` | `tests/Domain/SharedKernel/Unit` | non |
+| `infra.adapter.catalog` | `tests/Infrastructure/Unit/Adapter/Catalog` | non |
+| `infra.adapter.cache` | `tests/Infrastructure/Unit/Adapter/Cache` | non |
 | `infra.api-platform.encoder` | `tests/Infrastructure/Unit/ApiPlatform/Encoder` | non |
 | `infra.api-platform.serializer` | `tests/Infrastructure/Unit/ApiPlatform/Serializer` | non |
-| `infra.symfony.messenger` | `tests/Infrastructure/Unit/Symfony/Messenger` | non |
-| `infra.adapter.catalog` | `tests/Infrastructure/Unit/Adapter/Catalog` | non |
-| `domain.shared` | `tests/Domain/SharedKernel/Unit` | non |
-| `appli.shared` | `tests/Application/Unit/Shared` | non |
-| `pres.state.shared` | `tests/Presentation/Unit/State/Shared` | non |
 | `infra.persist` | `tests/Infrastructure/Integration/Persistence` | **oui** |
+| `infra.symfony.command` | `tests/Infrastructure/Unit/Symfony/Command` | non |
+| `infra.symfony.messenger` | `tests/Infrastructure/Unit/Symfony/Messenger` | non |
+| `pres.state.catalog` | `tests/Presentation/Unit/State/Catalog` | non |
+| `pres.state.customer` | `tests/Presentation/Unit/State/Customer` | non |
+| `pres.state.ordering` | `tests/Presentation/Unit/State/Ordering` | non |
+| `pres.state.shared` | `tests/Presentation/Unit/State/Shared` | non |
 | `api.catalog.category` | `tests/Presentation/Api/Catalog/CategoryTest.php` | **oui** |
 | `api.catalog.product` | `tests/Presentation/Api/Catalog/ProductTest.php` | **oui** |
+| `api.customer.customer` | `tests/Presentation/Api/Customer/CustomerTest.php` | **oui** |
+| `api.customer.address` | `tests/Presentation/Api/Customer/AddressTest.php` | **oui** |
+| `api.order.cart` | `tests/Presentation/Api/Ordering/CartTest.php` | **oui** |
+| `api.health` | `tests/Presentation/Api/Shared/HealthTest.php` | non |
+
+`infra.symfony.messenger` cite `DocumentManager` sans toucher Mongo : `MongoDomainEventBusTest` le
+mocke. C'est l'usage reel qui classe une suite, pas les imports.
+
+Verification — aucun fichier de test hors suite, stack demarree :
+
+```bash
+docker compose exec -T app vendor/bin/phpunit --list-test-files \
+  | grep -oE 'tests/.*Test\.php' | sort -u > /tmp/phpunit_listed.txt
+find tests -name '*Test.php' | sort | comm -13 /tmp/phpunit_listed.txt -
+# seul tests/Presentation/Api/BaseTest.php (abstraite) doit sortir
+```
 
 ### Les trois garde-fous ne testent aucun comportement
 

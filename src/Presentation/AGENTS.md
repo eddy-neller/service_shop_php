@@ -78,6 +78,10 @@ src/Presentation/
 - Endpoints sécurisés : `security` + OpenAPI `security: [['ApiKeyAuth' => []]]`.
 - Pagination : `PaginatedCollectionProvider` → attributs Request `_total_items` / `_total_pages` → `PaginationHeaderListener` produit `X-Total-Count` / `X-Total-Pages`. **Ne pas recalculer/poser manuellement** ces headers.
 - Pas d'endpoints hors API Platform si `ApiResource` + `Provider/Processor` suffit.
+  - **Seule exception : `GET /health`** (`Shared/Controller/HealthController`), contrôleur Symfony.
+    Une sonde doit dépendre du moins de choses possible : hors préfixe `/api`, hors OpenAPI, sans
+    sérialiseur ni provider, sans aucune dépendance d'infrastructure. Même contrat dans
+    `service_identity`. Test : suite `api.health`, qui n'hérite pas de `BaseTest`.
 
 ---
 

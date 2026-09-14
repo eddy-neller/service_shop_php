@@ -16,23 +16,7 @@
         <server name="SHELL_VERBOSITY" value="-1"/>
     </php>
 
-    <!-- Ce fichier est la reference : il doit decrire l'integralite de `tests/`.
-         Un `phpunit.xml` local (gitignore) peut le surcharger, mais rien ne doit
-         n'exister que la-bas — une suite absente d'ici ne serait jouee nulle part
-         en CI, et l'oubli passerait pour un run vert. -->
     <testsuites>
-        <!-- Suites a ports mockes. Si l'une
-             d'elles doit etre retouchee pour passer au vert, c'est que la migration
-             vers MongoDB a fuite hors d'Infrastructure/. -->
-        <testsuite name="domain.catalog">
-            <directory>tests/Domain/Catalog/Unit</directory>
-        </testsuite>
-        <testsuite name="domain.customer">
-            <directory>tests/Domain/Customer/Unit</directory>
-        </testsuite>
-        <testsuite name="domain.ordering">
-            <directory>tests/Domain/Ordering/Unit</directory>
-        </testsuite>
         <testsuite name="appli.catalog">
             <directory>tests/Application/Unit/Catalog/UseCase</directory>
         </testsuite>
@@ -42,6 +26,45 @@
         <testsuite name="appli.ordering">
             <directory>tests/Application/Unit/Ordering</directory>
         </testsuite>
+        <testsuite name="appli.shared">
+            <directory>tests/Application/Unit/Shared</directory>
+        </testsuite>
+
+        <testsuite name="domain.catalog">
+            <directory>tests/Domain/Catalog/Unit</directory>
+        </testsuite>
+        <testsuite name="domain.customer">
+            <directory>tests/Domain/Customer/Unit</directory>
+        </testsuite>
+        <testsuite name="domain.ordering">
+            <directory>tests/Domain/Ordering/Unit</directory>
+        </testsuite>
+        <testsuite name="domain.shared">
+            <directory>tests/Domain/SharedKernel/Unit</directory>
+        </testsuite>
+
+        <testsuite name="infra.adapter.catalog">
+            <directory>tests/Infrastructure/Unit/Adapter/Catalog</directory>
+        </testsuite>
+        <testsuite name="infra.adapter.cache">
+            <directory>tests/Infrastructure/Unit/Adapter/Cache</directory>
+        </testsuite>
+        <testsuite name="infra.api-platform.encoder">
+            <directory>tests/Infrastructure/Unit/ApiPlatform/Encoder</directory>
+        </testsuite>
+        <testsuite name="infra.api-platform.serializer">
+            <directory>tests/Infrastructure/Unit/ApiPlatform/Serializer</directory>
+        </testsuite>
+        <testsuite name="infra.persist">
+            <directory>tests/Infrastructure/Integration/Persistence</directory>
+        </testsuite>
+        <testsuite name="infra.symfony.command">
+            <directory>tests/Infrastructure/Unit/Symfony/Command</directory>
+        </testsuite>
+        <testsuite name="infra.symfony.messenger">
+            <directory>tests/Infrastructure/Unit/Symfony/Messenger</directory>
+        </testsuite>
+
         <testsuite name="pres.state.catalog">
             <directory>tests/Presentation/Unit/State/Catalog</directory>
         </testsuite>
@@ -51,59 +74,27 @@
         <testsuite name="pres.state.ordering">
             <directory>tests/Presentation/Unit/State/Ordering</directory>
         </testsuite>
-
-        <!-- Garde-fous transverses. Ils ne testent aucun comportement : ils balayent `src/`
-             et cassent le build des qu'un Model, un VO, un State ou un cas d'usage est livre
-             sans test, ou qu'un handler s'ecarte de la convention de nommage sur laquelle
-             repose le routage Messenger. Les retirer rend ces oublis invisibles. -->
-        <testsuite name="domain.shared">
-            <directory>tests/Domain/SharedKernel/Unit</directory>
-        </testsuite>
-        <testsuite name="appli.shared">
-            <directory>tests/Application/Unit/Shared</directory>
-        </testsuite>
         <testsuite name="pres.state.shared">
             <directory>tests/Presentation/Unit/State/Shared</directory>
         </testsuite>
-        <testsuite name="infra.symfony.command">
-            <directory>tests/Infrastructure/Unit/Symfony/Command</directory>
-        </testsuite>
-        <testsuite name="infra.symfony.messenger">
-            <directory>tests/Infrastructure/Unit/Symfony/Messenger</directory>
-        </testsuite>
-        <testsuite name="infra.api-platform.encoder">
-            <directory>tests/Infrastructure/Unit/ApiPlatform/Encoder</directory>
-        </testsuite>
-        <testsuite name="infra.api-platform.serializer">
-            <directory>tests/Infrastructure/Unit/ApiPlatform/Serializer</directory>
-        </testsuite>
-        <testsuite name="infra.adapter.catalog">
-            <directory>tests/Infrastructure/Unit/Adapter/Catalog</directory>
-        </testsuite>
-        <testsuite name="infra.adapter.cache">
-            <directory>tests/Infrastructure/Unit/Adapter/Cache</directory>
-        </testsuite>
 
-        <!-- Suites touchant un vrai MongoDB (base `service_shop_test`, cf. .env.test).
-             Ce sont les seules a attraper les regressions de mapping, d'index et de
-             transaction : elles exigent la stack `make up` et le replica set. -->
-        <testsuite name="infra.persist">
-            <directory>tests/Infrastructure/Integration/Persistence</directory>
-        </testsuite>
         <testsuite name="api.catalog.category">
             <file>tests/Presentation/Api/Catalog/CategoryTest.php</file>
         </testsuite>
         <testsuite name="api.catalog.product">
             <file>tests/Presentation/Api/Catalog/ProductTest.php</file>
         </testsuite>
-        <testsuite name="api.shop.customer">
+        <testsuite name="api.customer.customer">
             <file>tests/Presentation/Api/Customer/CustomerTest.php</file>
         </testsuite>
-        <testsuite name="api.shop.address">
+        <testsuite name="api.customer.address">
             <file>tests/Presentation/Api/Customer/AddressTest.php</file>
         </testsuite>
-        <testsuite name="api.shop.cart">
+        <testsuite name="api.order.cart">
             <file>tests/Presentation/Api/Ordering/CartTest.php</file>
+        </testsuite>
+        <testsuite name="api.health">
+            <file>tests/Presentation/Api/Shared/HealthTest.php</file>
         </testsuite>
     </testsuites>
 

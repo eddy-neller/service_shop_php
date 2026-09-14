@@ -3,3 +3,11 @@ controllers:
         path: ../src/Controller/
         namespace: App\Controller
     type: attribute
+
+# Sonde `GET /health` : seul controleur hors API Platform dans Presentation
+# (cf. src/Presentation/AGENTS.md). Meme contrat que service_identity.
+health:
+    resource:
+        path: ../src/Presentation/Shared/Controller/
+        namespace: App\Presentation\Shared\Controller
+    type: attribute

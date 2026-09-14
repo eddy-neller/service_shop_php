@@ -28,14 +28,4 @@ final class PingController extends AbstractController
             'roles' => $user->getRoles(),
         ]);
     }
-
-    /**
-     * Endpoint public. Sa raison d'etre n'est pas la supervision mais la preuve
-     * que le firewall discrimine reellement, au lieu de tout laisser passer.
-     */
-    #[Route('/health', name: 'health', methods: ['GET'])]
-    public function health(): JsonResponse
-    {
-        return new JsonResponse(['status' => 'ok', 'service' => 'service_shop']);
-    }
 }
