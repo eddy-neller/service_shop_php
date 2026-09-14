@@ -50,7 +50,7 @@ APP_REPLICAS ?= 3
 install:
 	@echo "$(YELLOW)** Starting installation... **$(RESET)"
 	@echo "$(YELLOW)** Update Git Repository **$(RESET)"
-	@git fa && git plr
+	@git f && git plr
 	@echo "$(YELLOW)** Destroy Docker Containers **$(RESET)"
 	@make down-hard
 	@echo "$(YELLOW)** Update Docker Images **$(RESET)"

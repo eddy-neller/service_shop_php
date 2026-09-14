@@ -427,9 +427,9 @@ interprete comme un nom d'hote et `nginx -t` echoue.
 
 Tout s'execute dans le conteneur `app` — ne jamais lancer `composer` ou `bin/console` sur l'hote.
 
-Pour synchroniser le depot apres un commit, toujours executer `git psa && git fa` : `psa` pousse
-toutes les branches et `fa` recupere les references distantes en supprimant celles qui sont obsoletees.
-Ne pas le remplacer par un simple `git push`.
+Pour synchroniser le depot apres un commit, executer `git ps && git f` : `ps` pousse la branche
+courante vers GitLab, seul depot distant, et `f` recupere les references distantes en supprimant
+celles qui sont obsoletes. GitHub est alimente par le miroir GitLab : ne jamais y pousser directement.
 
 ```bash
 cp makefile.conf.dist makefile.conf   # prerequis, une fois
