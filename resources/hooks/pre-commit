@@ -1,0 +1,31 @@
+#!/bin/bash
+set -euo pipefail
+
+#
+# Blocage des commits en local sur la branche main
+#
+
+# Récupère le nom de la branche courante (HEAD si détachée)
+BRANCH=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || echo "HEAD")
+
+if [ "$BRANCH" = "main" ]; then
+  printf "\n\033[31m🚫  Commit interdit sur la branche 'main'.\033[0m\n"
+  printf "Crée une branche feature et ouvre une MR, ou utilise --no-verify si tu sais ce que tu fais.\n\n"
+  exit 1
+fi
+
+#
+# Lancement de GrumPHP
+#
+
+CONTAINER="app"
+WORKDIR="/var/www"
+
+# ID du conteneur (vide si pas lancé)
+CID="$(docker compose ps -q "$CONTAINER" || true)"
+
+if [ -n "$CID" ]; then
+  # Exécuter dans le conteneur déjà lancé
+  docker compose exec -T --workdir "$WORKDIR" "$CONTAINER" \
+    ./vendor/bin/grumphp git:pre-commit --ansi --skip-success-output
+fi

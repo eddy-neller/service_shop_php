@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<ruleset name="E.N Shop Service - PHPMD rule set"
+         xmlns="http://pmd.sf.net/ruleset/1.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sf.net/ruleset/1.0.0 http://pmd.sf.net/ruleset_xml_schema.xsd">
+    <description>E.N Shop Service Shop rules to ensure code quality</description>
+
+    <rule ref="rulesets/cleancode.xml">
+        <exclude name="StaticAccess"/>
+        <exclude name="ElseExpression"/>
+        <exclude name="BooleanArgumentFlag"/>
+    </rule>
+    <rule ref="rulesets/codesize.xml/CyclomaticComplexity">
+        <properties>
+            <property name="reportLevel" value="15"/>
+        </properties>
+    </rule>
+    <rule ref="rulesets/controversial.xml"/>
+    <rule ref="rulesets/design.xml">
+        <exclude name="CouplingBetweenObjects"/>
+    </rule>
+    <rule ref="rulesets/naming.xml/ShortVariable">
+        <properties>
+            <property name="minimum" value="2"/>
+            <property name="exceptions" value="i,j,k,id,em,io,to,qb,n,iv"/>
+        </properties>
+    </rule>
+    <rule ref="rulesets/naming.xml/LongVariable">
+        <properties>
+            <property name="maximum" value="25"/>
+            <property name="subtract-suffixes" value="LifecycleStateMachine"/>
+        </properties>
+    </rule>
+    <rule ref="rulesets/naming.xml/ShortMethodName">
+        <properties>
+            <property name="minimum" value="2"/>
+        </properties>
+    </rule>
+    <rule ref="rulesets/unusedcode.xml">
+        <exclude name="UnusedFormalParameter"/>
+        <exclude name="UnusedLocalVariable"/>
+    </rule>
+    <rule ref="rulesets/unusedcode.xml/UnusedLocalVariable">
+        <properties>
+            <property name="allow-unused-foreach-variables" value="true"/>
+        </properties>
+    </rule>
+
+    <exclude-pattern>*/save/*</exclude-pattern>
+    <exclude-pattern>*/DataFixtures/*</exclude-pattern>
+    <exclude-pattern>*/EventListener/*</exclude-pattern>
+    <!-- Ignore Some Classes until phpmd supports method calls on inline new without extra parentheses -->
+    <exclude-pattern>*/AdminGroup.php</exclude-pattern>
+    <exclude-pattern>*/AutoGroup.php</exclude-pattern>
+    <exclude-pattern>*/Mailer.php</exclude-pattern>
+    <exclude-pattern>*/RefreshTokenRepositoryTest.php</exclude-pattern>
+</ruleset>

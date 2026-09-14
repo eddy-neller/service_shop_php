@@ -1,30 +1,102 @@
-name: en_shop_service_shop
+name: en_shop_php_service_shop
 
-# Aucun reseau externe, aucun depends_on vers une autre stack : ce service demarre
-# et repond seul. C'est une propriete du jalon 1, pas un oubli — il ne partage
-# aucun etat avec le service emetteur, seulement sa cle publique.
 services:
-  app:
-    container_name: en_shop_service_shop_app
+  mongodb:
+    container_name: en_shop_php_service_shop_mongodb
     restart: unless-stopped
     build:
+      context: ./docker/mongodb
+      dockerfile: ./Dockerfile
+    environment:
+      - MONGO_INITDB_DATABASE=${MONGODB_DB:-app}
+      - MONGO_INITDB_ROOT_USERNAME=${MONGODB_USERNAME:-}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGODB_PASSWORD:-}
+    ulimits:
+      nofile:
+        soft: 64000
+        hard: 64000
+    healthcheck:
+      test: >
+        mongosh --quiet
+        --username "$$MONGO_INITDB_ROOT_USERNAME"
+        --password "$$MONGO_INITDB_ROOT_PASSWORD"
+        --authenticationDatabase admin
+        --eval "
+          try { rs.status().ok }
+          catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongodb:27017'}]}).ok }
+        "
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    volumes:
+      - mongodb_data:/data/db:rw
+
+  app:
+    restart: unless-stopped
+    build: &app_build
       context: .
       dockerfile: ./docker/app/Dockerfile
-    volumes:
-      # Commenter la ligne suivante en production
-      - ./:/var/www:rw
-    extra_hosts:
-      - host.docker.internal:host-gateway
+      target: prod
+    image: &app_image en_shop_php_service_shop_app:latest
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SUPERVISOR_ROLE: web
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      VARNISH_URL: ${VARNISH_URL:-http://varnish}
+
+  worker:
+    restart: unless-stopped
+    build: *app_build
+    image: *app_image
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SUPERVISOR_ROLE: worker
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      VARNISH_URL: ${VARNISH_URL:-http://varnish}
 
   nginx:
-    container_name: en_shop_service_shop_nginx
     restart: unless-stopped
     depends_on:
       - app
+    networks:
+      default:
+        aliases:
+          - shop-nginx
     build:
       context: .
       dockerfile: ./docker/nginx/Dockerfile
     volumes:
-      # Commenter la ligne suivante en production
-      - ./:/var/www:rw
       - ./docker/nginx/conf.d:/etc/nginx/conf.d:rw
+
+  varnish:
+    container_name: en_shop_php_service_shop_varnish
+    restart: unless-stopped
+    depends_on:
+      - nginx
+    build:
+      context: ./docker/varnish
+      dockerfile: ./Dockerfile
+
+  redis:
+      container_name: en_shop_php_service_shop_redis
+      restart: unless-stopped
+      build:
+          context: ./docker/redis
+          dockerfile: ./Dockerfile
+      healthcheck:
+          test: ["CMD", "redis-cli", "ping"]
+          interval: 10s
+          timeout: 5s
+          retries: 5
+
+volumes:
+  mongodb_data:

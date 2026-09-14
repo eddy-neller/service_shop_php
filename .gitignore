@@ -14,8 +14,8 @@
 
 # Assets and user uploads
 /assets/*
-/public/uploads/images/shop/product/*
-!public/uploads/images/shop/product/.gitkeep
+/public/uploads/images/catalog/product/*
+!public/uploads/images/catalog/product/.gitkeep
 
 ###> lexik/jwt-authentication-bundle ###
 # La cle publique de production est copiee localement, pas versionnee.
@@ -39,3 +39,8 @@ phpstan.neon
 /.phpcs-cache
 /phpcs.xml
 ###< squizlabs/php_codesniffer ###
+
+###> friendsofphp/php-cs-fixer ###
+/.php-cs-fixer.php
+/.php-cs-fixer.cache
+###< friendsofphp/php-cs-fixer ###

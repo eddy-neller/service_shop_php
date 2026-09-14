@@ -1,20 +1,19 @@
 security:
-    # Repris a l'identique du monolithe (api/config/packages/security.yaml:8-11).
-    # Indispensable : sans cette hierarchie, un ROLE_ADMIN present dans le token
-    # n'impliquerait pas ROLE_USER cote shop.
     role_hierarchy:
         ROLE_MODERATEUR: [ROLE_USER]
         ROLE_ADMIN: [ROLE_MODERATEUR]
         ROLE_SUPER_ADMIN: [ROLE_ADMIN, ROLE_ALLOWED_TO_SWITCH]
 
-    # Aucun user provider adosse a une base : l'utilisateur est reconstruit
-    # depuis les seuls claims du token.
     providers:
         jwt_users:
             lexik_jwt:
-                class: App\Security\JwtAuthenticatedUser
+                class: App\Infrastructure\Symfony\Security\JwtAuthenticatedUser
 
     firewalls:
+        dev:
+            # Ensure dev tools and static assets are always allowed
+            pattern: ^/_debug/shop/(_profiler|_wdt)/
+            security: false
         main:
             stateless: true
             entry_point: jwt
@@ -22,4 +21,6 @@ security:
             jwt: ~
 
     access_control:
+        - { path: ^/$, roles: PUBLIC_ACCESS }
         - { path: ^/health$, roles: PUBLIC_ACCESS }
+        - { path: ^/api/docs, roles: PUBLIC_ACCESS }

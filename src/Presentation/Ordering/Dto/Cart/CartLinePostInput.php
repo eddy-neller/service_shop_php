@@ -1,0 +1,20 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Presentation\Ordering\Dto\Cart;
+
+use Symfony\Component\Serializer\Attribute\Groups;
+use Symfony\Component\Validator\Constraints as Assert;
+
+final class CartLinePostInput
+{
+    #[Groups(['shop_cart:write'])]
+    #[Assert\NotBlank]
+    #[Assert\Uuid]
+    public string $productId;
+
+    #[Groups(['shop_cart:write'])]
+    #[Assert\Range(min: 1, max: 99)]
+    public int $quantity = 1;
+}

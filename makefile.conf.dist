@@ -6,3 +6,6 @@ RESET := \033[0m
 
 DOCKER = docker compose
 APP = $(DOCKER) exec app
+
+# Nombre d'instances HTTP du service `app` lancees par `make up`.
+APP_REPLICAS = 3

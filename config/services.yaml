@@ -1,17 +1,86 @@
-services:
-    _defaults:
-        autowire: true
-        autoconfigure: true
+# yaml-language-server: $schema=../vendor/symfony/dependency-injection/Loader/schema/services.schema.json
 
-    App\:
-        resource: '../src/'
-        exclude:
-            - '../src/Kernel.php'
+# This file is the entry point to configure your own services.
+# Files in the packages/ subdirectory configure your dependencies.
+# See also https://symfony.com/doc/current/service_container/import.html
+
+# Put parameters here that don't need to change on each machine where the app is deployed
+# https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
+parameters:
+
+# config/services.yaml
+imports:
+  - { resource: 'services/*.yaml' }
+
+services:
+  _defaults:
+    autowire: true
+    autoconfigure: true
+
+  _instanceof:
+    App\Application\Shared\CQRS\Command\CommandHandlerInterface:
+      tags:
+        - { name: 'messenger.message_handler', bus: 'command.bus', method: 'handle' }
+    App\Application\Shared\CQRS\Query\QueryHandlerInterface:
+      tags:
+        - { name: 'messenger.message_handler', bus: 'query.bus', method: 'handle' }
+
+  App\:
+    resource: '../src/'
+    exclude:
+      - '../src/Kernel.php'
+      - '../src/Infrastructure/Persistence/Mongo/**/*Document.php'
+      - '../src/Domain/'
+      - '../src/Application/Catalog/ReadModel/'
+      - '../src/Application/Catalog/UseCase/*/*/*Command.php'
+      - '../src/Application/Catalog/UseCase/*/*/*Query.php'
+      - '../src/Presentation/Catalog/ApiResource/'
+      - '../src/Presentation/Catalog/Dto/'
+      - '../src/Application/Customer/ReadModel/'
+      - '../src/Application/Customer/UseCase/*/*/*Command.php'
+      - '../src/Application/Customer/UseCase/*/*/*Query.php'
+      - '../src/Presentation/Customer/ApiResource/'
+      - '../src/Presentation/Customer/Dto/'
+      - '../src/Application/Ordering/ReadModel/'
+      - '../src/Application/Ordering/UseCase/*/*/*Command.php'
+      - '../src/Application/Ordering/UseCase/*/*/*Query.php'
+      - '../src/Presentation/Ordering/ApiResource/'
+      - '../src/Presentation/Ordering/Dto/'
+      - '../src/Infrastructure/Symfony/DataFixtures/'
+      - '../src/Infrastructure/Symfony/Messenger/Transport/MongoOutboxTransport.php'
+      - '../src/Infrastructure/Symfony/Messenger/Transport/MongoOutboxReceivedStamp.php'
+
+when@dev:
+  services:
+    _defaults:
+      autowire: true
+      autoconfigure: true
+
+    # Enregistrees uniquement en dev : elles n'existent que pour peupler une base
+    # locale, et le groupe `dev` de `make fixtures` s'appuie sur ce meme decoupage.
+    App\Infrastructure\Symfony\DataFixtures\:
+      resource: '../src/Infrastructure/Symfony/DataFixtures/'
+
+    ApiPlatform\HttpCache\PurgerInterface:
+      alias: api_platform.http_cache.purger.varnish.ban
+
+when@prod:
+  services:
+    ApiPlatform\HttpCache\PurgerInterface:
+      alias: api_platform.http_cache.purger.varnish.ban
 
 when@test:
-    services:
-        # Rendu public pour que les tests fonctionnels puissent forger des tokens
-        # aux exp arbitraires (cas « token expire »).
-        test.jwt_encoder:
-            alias: lexik_jwt_authentication.encoder
-            public: true
+  services:
+    # Rendu public pour que les tests fonctionnels puissent forger des tokens
+    # aux exp arbitraires (cas « token expire »).
+    test.jwt_encoder:
+      alias: lexik_jwt_authentication.encoder
+      public: true
+
+    # Purger bouchon choisi par api_platform.http_cache.invalidation.purger.
+    # Les tests API ne doivent ni joindre Docker par HTTP ni recevoir de Cache-Tags
+    # supplementaire dans leurs assertions de reponse.
+    App\Tests\Infrastructure\Double\HttpCache\NullPurger: ~
+
+    ApiPlatform\HttpCache\PurgerInterface:
+      alias: App\Tests\Infrastructure\Double\HttpCache\NullPurger

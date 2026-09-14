@@ -1,0 +1,12 @@
+services:
+  varnish:
+    networks:
+      default: {}
+      edge:
+        aliases:
+          - service-shop
+
+networks:
+  edge:
+    external: true
+    name: en_shop_php_edge
