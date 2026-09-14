@@ -1,2 +1,7 @@
 framework:
     lock: '%env(LOCK_DSN)%'
+
+# Pourquoi Redis, et pourquoi `flock` en test : docs/lock.md
+when@test:
+    framework:
+        lock: 'flock'
