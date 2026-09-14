@@ -64,6 +64,9 @@
         <testsuite name="infra.symfony.messenger">
             <directory>tests/Infrastructure/Unit/Symfony/Messenger</directory>
         </testsuite>
+        <testsuite name="infra.symfony.security">
+            <directory>tests/Infrastructure/Unit/Symfony/Security</directory>
+        </testsuite>
 
         <testsuite name="pres.state.catalog">
             <directory>tests/Presentation/Unit/State/Catalog</directory>

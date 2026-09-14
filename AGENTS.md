@@ -490,6 +490,7 @@ Regles :
 | `infra.persist` | `tests/Infrastructure/Integration/Persistence` | **oui** |
 | `infra.symfony.command` | `tests/Infrastructure/Unit/Symfony/Command` | non |
 | `infra.symfony.messenger` | `tests/Infrastructure/Unit/Symfony/Messenger` | non |
+| `infra.symfony.security` | `tests/Infrastructure/Unit/Symfony/Security` | non |
 | `pres.state.catalog` | `tests/Presentation/Unit/State/Catalog` | non |
 | `pres.state.customer` | `tests/Presentation/Unit/State/Customer` | non |
 | `pres.state.ordering` | `tests/Presentation/Unit/State/Ordering` | non |
