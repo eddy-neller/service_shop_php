@@ -99,6 +99,9 @@
         <testsuite name="api.health">
             <file>tests/Presentation/Api/Shared/HealthTest.php</file>
         </testsuite>
+        <testsuite name="api.jwt">
+            <file>tests/Presentation/Api/Shared/JwtAuthenticationTest.php</file>
+        </testsuite>
     </testsuites>
 
     <source ignoreSuppressionOfDeprecations="true"

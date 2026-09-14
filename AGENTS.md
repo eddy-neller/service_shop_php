@@ -501,6 +501,7 @@ Regles :
 | `api.customer.address` | `tests/Presentation/Api/Customer/AddressTest.php` | **oui** |
 | `api.order.cart` | `tests/Presentation/Api/Ordering/CartTest.php` | **oui** |
 | `api.health` | `tests/Presentation/Api/Shared/HealthTest.php` | non |
+| `api.jwt` | `tests/Presentation/Api/Shared/JwtAuthenticationTest.php` | non |
 
 `infra.symfony.messenger` cite `DocumentManager` sans toucher Mongo : `MongoDomainEventBusTest` le
 mocke. C'est l'usage reel qui classe une suite, pas les imports.
