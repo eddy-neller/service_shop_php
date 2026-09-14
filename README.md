@@ -23,7 +23,6 @@ Le service ecoute sur **http://localhost:20910** (`service_identity` occupe 2090
 | Methode | Route | Acces | Role |
 |---|---|---|---|
 | GET | `/health` | public | prouve que le service vit **sans** la stack de `service_identity` |
-| GET | `/ping` | authentifie | restitue `userId` + `roles` extraits du token |
 | GET | `/shop/categories`, `/shop/categories/{id}` | public | lecture du catalogue |
 | POST / PATCH / DELETE | `/shop/categories…` | `ROLE_ADMIN` | ecriture |
 | GET | `/shop/products`, `/shop/products/{id}` | public | lecture, filtres `title`/`subtitle`/`description`/`category`, tri, pagination |

@@ -549,16 +549,17 @@ de mapping, d'index et de transaction, et elles exigent la stack `make up` avec 
 ```bash
 # 1. Le service vit seul
 curl localhost:20910/health                     # 200
-curl localhost:20910/ping                       # 401
+curl -s -o /dev/null -w '%{http_code}\n' localhost:20910/api/shop/customers   # 401
 
-# 2. Avec un token reel de l'emetteur
+# 2. Avec un token reel de l'emetteur : la cle publique du shop correspond a la sienne
 TOKEN=$(curl -s -X POST localhost:20900/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"venom@en-develop.fr","password":"userVenom1@"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['accessToken'])")
 
-curl -H "Authorization: Bearer $TOKEN" localhost:20910/ping    # 200 + userId/roles
-curl -H "Authorization: Bearer ${TOKEN%?}X" localhost:20910/ping  # 401
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" \
+  localhost:20910/api/shop/customers            # 200 (compte admin)
+# Les tokens refuses (expire, payload reecrit, `alg: none`, claims mal formes) : suite `api.jwt`.
 
 # 3. Le catalogue, avec le meme token
 CAT=$(curl -s -X POST localhost:20910/api/shop/categories -H "Authorization: Bearer $TOKEN" \
