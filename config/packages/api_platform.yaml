@@ -34,6 +34,7 @@ api_platform:
     # Resolution par is_a() : le 1er match dans l'ordre gagne — specifiques d'abord,
     # puis les categories semantiques du domaine, puis le fallback.
     exception_to_status:
+        App\Domain\Customer\Exception\CustomerDisabledException: 403
         App\Domain\SharedKernel\Exception\InvalidArgumentInterface: 422
         App\Domain\SharedKernel\Exception\ConflictInterface: 409
         App\Domain\SharedKernel\Exception\EntityNotFoundInterface: 404

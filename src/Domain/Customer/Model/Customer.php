@@ -13,6 +13,7 @@ use App\Domain\Customer\Event\Customer\CustomerCreatedEvent;
 use App\Domain\Customer\Event\Customer\CustomerDisabledEvent;
 use App\Domain\Customer\Exception\AddressLimitReachedException;
 use App\Domain\Customer\Exception\AddressNotFoundException;
+use App\Domain\Customer\Exception\CustomerDisabledException;
 use App\Domain\Customer\ValueObject\AddressId;
 use App\Domain\Customer\ValueObject\CustomerId;
 use App\Domain\Customer\ValueObject\CustomerStatus;
@@ -112,6 +113,17 @@ final class Customer
         $this->touch($now);
 
         $this->recordEvent(new CustomerDisabledEvent($this->id, $this->userAccountId, $now));
+    }
+
+    /**
+     * Garde des operations du client lui-meme (panier, adresses). Les operations d'administration
+     * ne la consultent pas : un admin doit pouvoir lire et desactiver un client deja desactive.
+     */
+    public function assertActive(): void
+    {
+        if ($this->status->isDisabled()) {
+            throw new CustomerDisabledException();
+        }
     }
 
     /**

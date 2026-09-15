@@ -9,6 +9,7 @@ use App\Domain\Catalog\ValueObject\CategoryId;
 use App\Domain\Catalog\ValueObject\ProductId;
 use App\Domain\Customer\Event\Address\AddressAddedEvent;
 use App\Domain\Customer\Event\Customer\CustomerCreatedEvent;
+use App\Domain\Customer\Event\Customer\CustomerDisabledEvent;
 use App\Domain\Customer\ValueObject\AddressId;
 use App\Domain\Customer\ValueObject\CustomerId;
 use App\Domain\Customer\ValueObject\UserAccountId;
@@ -100,6 +101,26 @@ final class DomainEventCacheTagsTest extends TestCase
         );
 
         self::assertSame(['customer-' . self::CUSTOMER_ID], $this->tags->forEvent($event));
+    }
+
+    /**
+     * Le cas qui compte depuis que `DisplayMyCustomerQuery` refuse un client desactive : sans
+     * cette purge, la traduction cachee resterait servie jusqu'a 24 h, et le client garderait
+     * l'acces a son panier et a ses adresses. Aucun test d'API ne peut le voir : en test, le
+     * cache de queries ne survit pas d'une requete a l'autre.
+     */
+    public function testDisablingACustomerPurgesTheAccountTranslation(): void
+    {
+        $event = new CustomerDisabledEvent(
+            CustomerId::fromString(self::CUSTOMER_ID),
+            UserAccountId::fromString(self::ACCOUNT_ID),
+            new DateTimeImmutable('2025-01-02 10:00:00'),
+        );
+
+        self::assertSame(
+            ['customer-' . self::CUSTOMER_ID, 'customer-of-user-' . self::ACCOUNT_ID],
+            $this->tags->forEvent($event),
+        );
     }
 
     public function testAnAddressFactIsTreatedAsACustomerFact(): void

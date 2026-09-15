@@ -7,6 +7,7 @@ namespace App\Tests\Application\Unit\Customer\UseCase\Query;
 use App\Application\Customer\Port\CustomerRepositoryInterface;
 use App\Application\Customer\UseCase\Query\DisplayMyCustomer\DisplayMyCustomerQuery;
 use App\Application\Customer\UseCase\Query\DisplayMyCustomer\DisplayMyCustomerQueryHandler;
+use App\Domain\Customer\Exception\CustomerDisabledException;
 use App\Domain\Customer\Exception\CustomerNotFoundException;
 use App\Domain\Customer\Model\Customer;
 use App\Domain\Customer\ValueObject\CustomerId;
@@ -57,6 +58,26 @@ final class DisplayMyCustomerTest extends TestCase
         $this->repository->expects($this->once())->method('findByUserAccountId')->willReturn(null);
 
         $this->expectException(CustomerNotFoundException::class);
+
+        $this->handler->handle(new DisplayMyCustomerQuery(self::ACCOUNT_ID));
+    }
+
+    /**
+     * Le refus a lieu avant le `return` : rien n'est stocke quand le callback leve, donc un
+     * client desactive n'est jamais servi par le cache.
+     */
+    public function testHandleRejectsADisabledCustomer(): void
+    {
+        $customer = Customer::create(
+            CustomerId::fromString(self::CUSTOMER_ID),
+            new DateTimeImmutable('2025-01-01 10:00:00'),
+            UserAccountId::fromString(self::ACCOUNT_ID),
+        );
+        $customer->disable(new DateTimeImmutable('2025-01-02 10:00:00'));
+
+        $this->repository->expects($this->once())->method('findByUserAccountId')->willReturn($customer);
+
+        $this->expectException(CustomerDisabledException::class);
 
         $this->handler->handle(new DisplayMyCustomerQuery(self::ACCOUNT_ID));
     }

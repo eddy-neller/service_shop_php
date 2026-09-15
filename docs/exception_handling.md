@@ -8,6 +8,7 @@ connaît ni HTTP ni Symfony : la correspondance est définie uniquement dans
 
 | Catégorie du Domain | Statut HTTP | Cas du catalogue |
 |---|---:|---|
+| `CustomerDisabledException` (exception ciblée, hors catégorie) | 403 | client désactivé agissant sur son panier ou ses adresses (`/me`) |
 | `InvalidArgumentInterface` | 422 | UUID, slug, titres, sous-titres et descriptions invalides, montant invalide |
 | `ConflictInterface` | 409 | titre de catégorie ou de produit déjà utilisé |
 | `EntityNotFoundInterface` | 404 | catégorie ou produit absent |
@@ -35,6 +36,7 @@ Les catégories sémantiques doivent donc précéder le fallback générique :
 
 ```yaml
 exception_to_status:
+    App\Domain\Customer\Exception\CustomerDisabledException: 403   # exception ciblee d'abord
     App\Domain\SharedKernel\Exception\InvalidArgumentInterface: 422
     App\Domain\SharedKernel\Exception\ConflictInterface: 409
     App\Domain\SharedKernel\Exception\EntityNotFoundInterface: 404

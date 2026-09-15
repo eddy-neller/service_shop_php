@@ -6,9 +6,7 @@ use Rector\CodeQuality\Rector\Catch_\ThrowWithPreviousExceptionRector;
 use Rector\CodeQuality\Rector\Class_\InlineConstructorDefaultToPropertyRector;
 use Rector\CodeQuality\Rector\Empty_\SimplifyEmptyCheckOnEmptyArrayRector;
 use Rector\CodeQuality\Rector\Identical\FlipTypeControlToUseExclusiveTypeRector;
-use Rector\CodeQuality\Rector\If_\CombineIfRector;
 use Rector\CodingStyle\Rector\Catch_\CatchExceptionNameMatchingTypeRector;
-use Rector\CodingStyle\Rector\If_\NullableCompareToNullRector;
 use Rector\Config\RectorConfig;
 use Rector\DeadCode\Rector\FunctionLike\NarrowWideUnionReturnTypeRector;
 use Rector\PHPUnit\CodeQuality\Rector\Class_\PreferPHPUnitThisCallRector;
@@ -18,7 +16,6 @@ use Rector\PHPUnit\CodeQuality\Rector\MethodCall\WithCallbackIdenticalToStandalo
 use Rector\PHPUnit\Set\PHPUnitSetList;
 use Rector\Set\ValueObject\SetList;
 use Rector\Strict\Rector\Empty_\DisallowedEmptyRuleFixerRector;
-use Rector\Transform\Rector\Attribute\AttributeKeyToClassConstFetchRector;
 use Rector\TypeDeclaration\Rector\StmtsAwareInterface\SafeDeclareStrictTypesRector;
 
 return static function (RectorConfig $rectorConfig): void {
@@ -39,7 +36,6 @@ return static function (RectorConfig $rectorConfig): void {
     $rectorConfig->skip([
         __DIR__ . '/config',
         CatchExceptionNameMatchingTypeRector::class,
-        AttributeKeyToClassConstFetchRector::class,
         ThrowWithPreviousExceptionRector::class,
         DisallowedEmptyRuleFixerRector::class,
         SimplifyEmptyCheckOnEmptyArrayRector::class,

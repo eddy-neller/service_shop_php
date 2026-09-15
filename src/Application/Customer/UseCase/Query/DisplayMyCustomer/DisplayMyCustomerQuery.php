@@ -7,11 +7,18 @@ namespace App\Application\Customer\UseCase\Query\DisplayMyCustomer;
 use App\Application\Shared\CQRS\Query\CacheableQueryInterface;
 
 /**
- * Resout l'association `userAccountId` -> `customerId`, immuable une fois le client cree.
+ * Resout le client courant d'une operation `/api/shop/me/*` : association `userAccountId` ->
+ * `customerId`, **reservee a un client actif**. Un client desactive leve
+ * `CustomerDisabledException` (403).
  *
- * Elle est jouee a **chaque** requete `/api/shop/me/*` avant la commande ou la query utile,
- * d'ou le cache : c'est la seule lecture du contexte qui merite d'etre servie sans aller en
- * base, et son TTL long se justifie par l'immutabilite de l'association.
+ * Elle est jouee a **chaque** requete `/me` avant la commande ou la query utile, d'ou le cache :
+ * c'est la seule lecture du contexte qui merite d'etre servie sans aller en base. Le TTL long
+ * tient a deux choses : l'association est immuable, et seul un client actif est stocke. Sa
+ * desactivation purge l'entree (voir plus bas) : la requete suivante retourne en base, et le
+ * handler refuse.
+ *
+ * Ne pas la reutiliser pour une route qui doit rester ouverte a un client desactive (consulter
+ * ses donnees avant suppression, par exemple) : elle le refuserait. Ecrire une autre query.
  *
  * Le cas « client pas encore provisionne » reste correct : `CustomerNotFoundException`
  * traverse le callback, et rien n'est stocke quand celui-ci leve — la requete suivante

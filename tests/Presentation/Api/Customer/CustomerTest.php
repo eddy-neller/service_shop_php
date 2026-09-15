@@ -232,6 +232,59 @@ final class CustomerTest extends BaseTest
         $this->testException(Request::METHOD_PATCH, $this->iri, $options, $exception);
     }
 
+    /**
+     * Les operations `/me` resolvent le client par `DisplayMyCustomerQuery`, qui refuse un client
+     * desactive : lecture comme ecriture, panier comme adresses. Operations sans corps, pour que
+     * la validation d'un payload ne reponde pas 422 avant la regle.
+     *
+     * Ce scenario prouve la regle de bout en bout, **pas** l'invalidation du cache : en test, le
+     * cache de queries est un tableau par processus et le noyau reboote entre deux requetes, donc
+     * rien n'y survit. La purge de `customer-of-user-{id}` a la desactivation est garantie par
+     * `DomainEventCacheTagsTest`.
+     */
+    public static function provideDisabledCustomerMeOperation(): Generator
+    {
+        yield 'Get cart' => [Request::METHOD_GET, self::URL_API . 'shop/me/cart', false];
+        yield 'Clear cart' => [Request::METHOD_DELETE, self::URL_API . 'shop/me/cart', false];
+        yield 'List addresses' => [Request::METHOD_GET, self::URL_API . 'shop/me/addresses', false];
+        yield 'Delete address' => [Request::METHOD_DELETE, self::URL_API . 'shop/me/addresses/', true];
+    }
+
+    #[DataProvider('provideDisabledCustomerMeOperation')]
+    public function testDisabledCustomerLosesAccessToMeOperations(string $method, string $uri, bool $withAddressId): void
+    {
+        if ($withAddressId) {
+            $customer = $this->getInstance(Customer::class, [
+                'userAccountId' => $this->userIdOf($this->userMember),
+            ]);
+            self::assertInstanceOf(Customer::class, $customer);
+
+            $address = $customer->addresses->first();
+            self::assertNotFalse($address);
+
+            $uri .= $address->id;
+        }
+
+        $this->testSuccess(
+            Request::METHOD_PATCH,
+            $this->iri,
+            [
+                'auth_bearer' => self::PLACEHOLDERS['TOKENS']['ADMIN'],
+                'headers' => ['Content-Type' => 'application/merge-patch+json'],
+                'json' => ['status' => CustomerStatus::DISABLED],
+            ],
+            Response::HTTP_OK,
+            [BaseTest::ASSERTION_TYPE['EQUAL'] => ['status' => CustomerStatus::DISABLED]],
+        );
+
+        $this->testException($method, $uri, ['auth_bearer' => self::PLACEHOLDERS['TOKENS']['MEMBER']], [
+            'class' => ClientExceptionInterface::class,
+            'code' => Response::HTTP_FORBIDDEN,
+            // Le message metier, pas un « Access Denied » : le refus vient bien de la regle.
+            'message' => 'Customer is disabled.',
+        ]);
+    }
+
     public static function provideCustomerNotFoundException(): Generator
     {
         $adminToken = self::PLACEHOLDERS['TOKENS']['ADMIN'];

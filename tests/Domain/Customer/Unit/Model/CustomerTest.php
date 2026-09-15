@@ -13,6 +13,7 @@ use App\Domain\Customer\Event\Customer\CustomerCreatedEvent;
 use App\Domain\Customer\Event\Customer\CustomerDisabledEvent;
 use App\Domain\Customer\Exception\AddressLimitReachedException;
 use App\Domain\Customer\Exception\AddressNotFoundException;
+use App\Domain\Customer\Exception\CustomerDisabledException;
 use App\Domain\Customer\Model\Address;
 use App\Domain\Customer\Model\Customer;
 use App\Domain\Customer\ValueObject\AddressId;
@@ -103,6 +104,25 @@ final class CustomerTest extends TestCase
 
         self::assertSame([], $customer->releaseEvents());
         self::assertSame($untouched, $customer->getUpdatedAt());
+    }
+
+    public function testAnActiveCustomerPassesTheActivityGuard(): void
+    {
+        $customer = $this->aCustomer(new DateTimeImmutable('2025-01-01 10:00:00'));
+
+        $this->expectNotToPerformAssertions();
+
+        $customer->assertActive();
+    }
+
+    public function testADisabledCustomerFailsTheActivityGuard(): void
+    {
+        $customer = $this->aCustomer(new DateTimeImmutable('2025-01-01 10:00:00'));
+        $customer->disable(new DateTimeImmutable('2025-01-02 10:00:00'));
+
+        $this->expectException(CustomerDisabledException::class);
+
+        $customer->assertActive();
     }
 
     public function testActivateSetsStatusTouchesUpdatedAtAndRecordsTheEvent(): void

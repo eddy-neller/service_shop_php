@@ -17,12 +17,19 @@ final readonly class DisplayMyCustomerQueryHandler implements QueryHandlerInterf
     ) {
     }
 
+    /**
+     * Resout le client **et** verifie qu'il peut agir. Le refus a lieu avant le `return` : rien
+     * n'est mis en cache quand le handler leve, donc un client desactive n'est jamais servi par
+     * le cache.
+     */
     public function handle(DisplayMyCustomerQuery $query): CurrentCustomerItem
     {
         $customer = $this->repository->findByUserAccountId(UserAccountId::fromString($query->userAccountId));
         if (null === $customer) {
             throw new CustomerNotFoundException();
         }
+
+        $customer->assertActive();
 
         return CurrentCustomerItem::fromCustomer($customer);
     }

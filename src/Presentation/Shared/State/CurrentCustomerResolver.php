@@ -14,6 +14,8 @@ use Symfony\Bundle\SecurityBundle\Security;
  *
  * Le client n'existant pas encore (relais de provisionnement pas encore passe), la query
  * leve `CustomerNotFoundException` -> 404. Cette fenetre est assumee : voir `AGENTS.md`.
+ * Un client desactive leve `CustomerDisabledException` -> 403 : toutes les operations `/me` lui
+ * sont fermees, lecture comprise.
  */
 final readonly class CurrentCustomerResolver
 {
