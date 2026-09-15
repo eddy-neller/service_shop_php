@@ -46,7 +46,7 @@ final readonly class NativeProductImageValidator implements ProductImageValidato
 
         $dimensions = getimagesize($file->getPathname());
         if (false === $dimensions) {
-            throw InvalidProductImageException::invalidDimensions($minDimension, $maxDimension);
+            throw InvalidProductImageException::unreadable();
         }
 
         $contentMimeType = $dimensions['mime'];

@@ -10,7 +10,6 @@ use App\Tests\Presentation\Api\BaseTest;
 use Faker\Factory;
 use Generator;
 use PHPUnit\Framework\Attributes\DataProvider;
-use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
@@ -585,7 +584,7 @@ final class ProductTest extends BaseTest
                 'headers' => ['Content-Type' => 'multipart/form-data'],
                 'extra' => [
                     'files' => [
-                        'imageFile' => self::PLACEHOLDERS['IMAGES']['PAYSAGE'],
+                        'imageFile' => self::PLACEHOLDERS['IMAGES']['PRODUCT'],
                     ],
                 ],
             ],
@@ -623,7 +622,7 @@ final class ProductTest extends BaseTest
                 'headers' => ['Content-Type' => 'multipart/form-data'],
                 'extra' => [
                     'files' => [
-                        'imageFile' => self::PLACEHOLDERS['IMAGES']['PAYSAGE'],
+                        'imageFile' => self::PLACEHOLDERS['IMAGES']['PRODUCT'],
                     ],
                 ],
             ],
@@ -644,31 +643,69 @@ final class ProductTest extends BaseTest
 
     public static function provideUploadImageProductSuccess(): Generator
     {
-        $adminToken = self::PLACEHOLDERS['TOKENS']['ADMIN'];
-        $image = self::PLACEHOLDERS['IMAGES']['PAYSAGE'];
-
-        yield 'Upload Image' => [
-            [
-                'auth_bearer' => $adminToken,
-                'headers' => ['Content-Type' => 'multipart/form-data'],
-                'extra' => [
-                    'files' => [
-                        'imageFile' => $image,
-                    ],
-                ],
-            ],
-        ];
+        yield 'JPEG 256x256' => [self::PLACEHOLDERS['IMAGES']['PRODUCT']];
+        yield 'PNG' => [self::PLACEHOLDERS['IMAGES']['PRODUCT_PNG']];
+        yield 'WebP' => [self::PLACEHOLDERS['IMAGES']['PRODUCT_WEBP']];
+        yield 'JPEG 200x200, the minimum' => [self::PLACEHOLDERS['IMAGES']['PRODUCT_MIN_DIMENSION']];
+        yield 'JPEG 2000x2000, the maximum' => [self::PLACEHOLDERS['IMAGES']['PRODUCT_MAX_DIMENSION']];
+        yield 'JPEG of exactly PRODUCT_IMAGE_MAX_SIZE bytes' => [self::PLACEHOLDERS['IMAGES']['PRODUCT_MAX_SIZE']];
+        yield 'PNG sent as product.jpg: the name is ignored' => [self::PLACEHOLDERS['IMAGES']['PNG_NAMED_JPG']];
     }
 
     #[DataProvider('provideUploadImageProductSuccess')]
-    public function testUploadImageProductSuccess(
-        array $options,
-    ): void {
+    public function testUploadImageProductSuccess(string $image): void
+    {
         $this->testSuccess(
             Request::METHOD_POST,
             $this->iri . '/image',
-            $options,
+            $this->imageOptions($image),
             Response::HTTP_CREATED,
+            [
+                BaseTest::ASSERTION_TYPE['NOT_NULL'] => ['imageUrl'],
+            ],
+        );
+    }
+
+    /**
+     * Images refusees par le validateur de l'Infrastructure, avec le message attendu. Le DTO
+     * ne verifie que la presence du fichier : tout le reste se joue ici.
+     */
+    public static function provideUploadImageProductRejectedImage(): Generator
+    {
+        $invalidDimensions = 'Product image dimensions must be between 200 and 2000 pixels.';
+
+        yield 'GIF' => [self::PLACEHOLDERS['IMAGES']['GIF'], 'Invalid product image file type: image/gif.'];
+        yield 'SVG' => [self::PLACEHOLDERS['IMAGES']['SVG'], 'Invalid product image file type: image/svg+xml.'];
+        yield 'PDF' => [self::PLACEHOLDERS['IMAGES']['PDF'], 'Invalid product image file type: application/pdf.'];
+        yield 'Plain text sent as product.jpg' => [
+            self::PLACEHOLDERS['IMAGES']['TEXT_NAMED_JPG'],
+            'Invalid product image file type: text/plain.',
+        ];
+        yield 'Empty file' => [self::PLACEHOLDERS['IMAGES']['EMPTY'], 'No product image file provided.'];
+        yield 'Truncated JPEG' => [self::PLACEHOLDERS['IMAGES']['TRUNCATED'], 'Product image file is not a readable image.'];
+        yield 'One byte over PRODUCT_IMAGE_MAX_SIZE' => [
+            self::PLACEHOLDERS['IMAGES']['OVER_MAX_SIZE'],
+            'Product image file exceeds the maximum allowed size (10485760 bytes).',
+        ];
+        yield 'Width below the minimum (199x200)' => [self::PLACEHOLDERS['IMAGES']['TOO_NARROW'], $invalidDimensions];
+        yield 'Height below the minimum (200x199)' => [self::PLACEHOLDERS['IMAGES']['TOO_SHORT'], $invalidDimensions];
+        yield 'Width above the maximum (2001x200)' => [self::PLACEHOLDERS['IMAGES']['TOO_WIDE'], $invalidDimensions];
+        yield 'Height above the maximum (200x2001)' => [self::PLACEHOLDERS['IMAGES']['TOO_TALL'], $invalidDimensions];
+        yield 'Both sides above the maximum (2400x1800)' => [self::PLACEHOLDERS['IMAGES']['TOO_LARGE'], $invalidDimensions];
+    }
+
+    #[DataProvider('provideUploadImageProductRejectedImage')]
+    public function testUploadImageProductRejectsImage(string $image, string $message): void
+    {
+        $this->testException(
+            Request::METHOD_POST,
+            $this->iri . '/image',
+            $this->imageOptions($image),
+            [
+                'class' => ClientExceptionInterface::class,
+                'code' => Response::HTTP_UNPROCESSABLE_ENTITY,
+                'message' => $message,
+            ],
         );
     }
 
@@ -681,7 +718,7 @@ final class ProductTest extends BaseTest
             [
                 'extra' => [
                     'files' => [
-                        'imageFile' => self::PLACEHOLDERS['IMAGES']['PAYSAGE'],
+                        'imageFile' => self::PLACEHOLDERS['IMAGES']['PRODUCT'],
                     ],
                 ],
                 'headers' => ['Content-Type' => 'multipart/form-data'],
@@ -697,7 +734,7 @@ final class ProductTest extends BaseTest
             [
                 'extra' => [
                     'files' => [
-                        'imageFile' => self::PLACEHOLDERS['IMAGES']['PAYSAGE'],
+                        'imageFile' => self::PLACEHOLDERS['IMAGES']['PRODUCT'],
                     ],
                 ],
                 'headers' => ['Content-Type' => 'multipart/form-data'],
@@ -726,7 +763,7 @@ final class ProductTest extends BaseTest
             [
                 'extra' => [
                     'files' => [
-                        'imageFile' => self::PLACEHOLDERS['IMAGES']['PAYSAGE'],
+                        'imageFile' => self::PLACEHOLDERS['IMAGES']['PRODUCT'],
                     ],
                 ],
                 'headers' => ['Content-Type' => 'application/json'],
@@ -753,36 +790,16 @@ final class ProductTest extends BaseTest
         );
     }
 
-    public function testUploadImageProductRejectsGifContent(): void
+    /**
+     * @return array<string, mixed>
+     */
+    private function imageOptions(string $image): array
     {
-        $path = tempnam(sys_get_temp_dir(), 'product-gif-');
-        if (false === $path) {
-            self::fail('Unable to create temporary GIF upload.');
-        }
-
-        file_put_contents($path, base64_decode('R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='));
-        $file = new UploadedFile($path, 'product.gif', 'image/gif', null, true);
-
-        try {
-            $this->testException(
-                Request::METHOD_POST,
-                $this->iri . '/image',
-                [
-                    'auth_bearer' => self::PLACEHOLDERS['TOKENS']['ADMIN'],
-                    'headers' => ['Content-Type' => 'multipart/form-data'],
-                    'extra' => ['files' => ['imageFile' => $file]],
-                ],
-                [
-                    'class' => ClientExceptionInterface::class,
-                    'code' => Response::HTTP_UNPROCESSABLE_ENTITY,
-                    'message' => 'Invalid product image file type: image/gif.',
-                ],
-            );
-        } finally {
-            if (is_file($path)) {
-                unlink($path);
-            }
-        }
+        return [
+            'auth_bearer' => self::PLACEHOLDERS['TOKENS']['ADMIN'],
+            'headers' => ['Content-Type' => 'multipart/form-data'],
+            'extra' => ['files' => ['imageFile' => $image]],
+        ];
     }
 
     private static function getFakeDataCatalogProduct(): array

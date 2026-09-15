@@ -60,8 +60,29 @@ abstract class BaseTest extends ApiTestCase
             'MEMBER_1' => 'MEMBER_1_TOKEN_PLACEHOLDER',
         ],
         'IMAGES' => [
-            'PAYSAGE' => 'PAYSAGE_IMAGE_PLACEHOLDER',
-            'AVATAR' => 'AVATAR_IMAGE_PLACEHOLDER',
+            // Acceptees
+            'PRODUCT' => 'PRODUCT_IMAGE_PLACEHOLDER',
+            'PRODUCT_PNG' => 'PRODUCT_PNG_IMAGE_PLACEHOLDER',
+            'PRODUCT_WEBP' => 'PRODUCT_WEBP_IMAGE_PLACEHOLDER',
+            'PRODUCT_MIN_DIMENSION' => 'PRODUCT_MIN_DIMENSION_IMAGE_PLACEHOLDER',
+            'PRODUCT_MAX_DIMENSION' => 'PRODUCT_MAX_DIMENSION_IMAGE_PLACEHOLDER',
+            'PRODUCT_MAX_SIZE' => 'PRODUCT_MAX_SIZE_IMAGE_PLACEHOLDER',
+            'PNG_NAMED_JPG' => 'PNG_NAMED_JPG_IMAGE_PLACEHOLDER',
+            // Refusees : format
+            'GIF' => 'GIF_IMAGE_PLACEHOLDER',
+            'SVG' => 'SVG_IMAGE_PLACEHOLDER',
+            'PDF' => 'PDF_IMAGE_PLACEHOLDER',
+            'TEXT_NAMED_JPG' => 'TEXT_NAMED_JPG_IMAGE_PLACEHOLDER',
+            'EMPTY' => 'EMPTY_IMAGE_PLACEHOLDER',
+            'TRUNCATED' => 'TRUNCATED_IMAGE_PLACEHOLDER',
+            // Refusees : poids
+            'OVER_MAX_SIZE' => 'OVER_MAX_SIZE_IMAGE_PLACEHOLDER',
+            // Refusees : dimensions
+            'TOO_NARROW' => 'TOO_NARROW_IMAGE_PLACEHOLDER',
+            'TOO_SHORT' => 'TOO_SHORT_IMAGE_PLACEHOLDER',
+            'TOO_WIDE' => 'TOO_WIDE_IMAGE_PLACEHOLDER',
+            'TOO_TALL' => 'TOO_TALL_IMAGE_PLACEHOLDER',
+            'TOO_LARGE' => 'TOO_LARGE_IMAGE_PLACEHOLDER',
         ],
     ];
 
@@ -71,10 +92,47 @@ abstract class BaseTest extends ApiTestCase
         'MEMBER_1_TOKEN_PLACEHOLDER' => 'user_member_1',
     ];
 
+    /**
+     * `file` : fichier de `tests/Fixtures/images/` · `name` : nom annonce par le client
+     * (le serveur doit l'ignorer) · `size` : poids exact, atteint en gonflant le JPEG.
+     *
+     * Les poids ne sont pas versionnes : 10 Mo par fichier alourdiraient le depot pour un
+     * octet de difference. Ils suivent `PRODUCT_IMAGE_MAX_SIZE` (10 485 760, `.env.test`),
+     * que l'`upload_max_filesize` du `php.ini` doit depasser — sinon PHP refuse le fichier
+     * avant le validateur, et le cas « un octet de trop » ne teste plus le bon message.
+     *
+     * @var array<string, array{file: string, name?: string, size?: int}>
+     */
     private const array IMAGE_PLACEHOLDER_MAPPING = [
-        'PAYSAGE_IMAGE_PLACEHOLDER' => 'paysage.jpg',
-        'AVATAR_IMAGE_PLACEHOLDER' => 'venom.jpg',
+        'PRODUCT_IMAGE_PLACEHOLDER' => ['file' => 'product.jpg'],
+        'PRODUCT_PNG_IMAGE_PLACEHOLDER' => ['file' => 'product.png'],
+        'PRODUCT_WEBP_IMAGE_PLACEHOLDER' => ['file' => 'product.webp'],
+        'PRODUCT_MIN_DIMENSION_IMAGE_PLACEHOLDER' => ['file' => 'product-200x200.jpg'],
+        'PRODUCT_MAX_DIMENSION_IMAGE_PLACEHOLDER' => ['file' => 'product-2000x2000.jpg'],
+        'PRODUCT_MAX_SIZE_IMAGE_PLACEHOLDER' => ['file' => 'product.jpg', 'size' => 10_485_760],
+        'PNG_NAMED_JPG_IMAGE_PLACEHOLDER' => ['file' => 'product.png', 'name' => 'product.jpg'],
+        'GIF_IMAGE_PLACEHOLDER' => ['file' => 'product.gif'],
+        'SVG_IMAGE_PLACEHOLDER' => ['file' => 'product.svg'],
+        'PDF_IMAGE_PLACEHOLDER' => ['file' => 'document.pdf'],
+        'TEXT_NAMED_JPG_IMAGE_PLACEHOLDER' => ['file' => 'not-an-image.txt', 'name' => 'product.jpg'],
+        'EMPTY_IMAGE_PLACEHOLDER' => ['file' => 'empty.jpg'],
+        'TRUNCATED_IMAGE_PLACEHOLDER' => ['file' => 'truncated.jpg'],
+        'OVER_MAX_SIZE_IMAGE_PLACEHOLDER' => ['file' => 'product.jpg', 'size' => 10_485_761],
+        'TOO_NARROW_IMAGE_PLACEHOLDER' => ['file' => 'product-199x200.jpg'],
+        'TOO_SHORT_IMAGE_PLACEHOLDER' => ['file' => 'product-200x199.jpg'],
+        'TOO_WIDE_IMAGE_PLACEHOLDER' => ['file' => 'product-2001x200.jpg'],
+        'TOO_TALL_IMAGE_PLACEHOLDER' => ['file' => 'product-200x2001.jpg'],
+        'TOO_LARGE_IMAGE_PLACEHOLDER' => ['file' => 'product-2400x1800.jpg'],
     ];
+
+    /**
+     * Fichiers de test versionnes, generes sans bibliotheque d'image (l'image `ci`
+     * n'embarque pas GD). `product.jpg` fait 256 px de cote, entre les bornes de `.env.test`.
+     */
+    private const string FIXTURE_IMAGE_DIR = __DIR__ . '/../../Fixtures/images';
+
+    /** Taille maximale de la charge utile d'un segment JPEG COM (65 535 moins les 2 octets de longueur). */
+    private const int JPEG_COMMENT_MAX_PAYLOAD = 65_533;
 
     protected Client $client;
 
@@ -107,6 +165,9 @@ abstract class BaseTest extends ApiTestCase
     /** Les index du mapping ne sont poses qu'une fois par processus (cf. resetDatabase()). */
     private static bool $indexesEnsured = false;
 
+    /** @var list<string> Copies temporaires creees par getImage(), supprimees en tearDown(). */
+    private array $temporaryFiles = [];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -122,6 +183,19 @@ abstract class BaseTest extends ApiTestCase
 
         $this->resetDatabase();
         $this->seedTestData();
+    }
+
+    protected function tearDown(): void
+    {
+        foreach ($this->temporaryFiles as $path) {
+            if (is_file($path)) {
+                unlink($path);
+            }
+        }
+
+        $this->temporaryFiles = [];
+
+        parent::tearDown();
     }
 
     abstract protected function seedTestData(): void;
@@ -352,9 +426,29 @@ abstract class BaseTest extends ApiTestCase
         return $this->getManager()->getRepository($class)->findOneBy($criteria); // @phpstan-ignore-line
     }
 
-    protected function getImage(string $filename, string $suffix): UploadedFile
+    /**
+     * Rend une copie jetable de l'image : le fichier versionne ne doit jamais etre
+     * deplace ni modifie par le code sous test. Le MIME est deduit du contenu, d'ou
+     * l'absence d'extension sur le nom temporaire.
+     */
+    protected function getImage(string $filename, ?string $clientName = null, ?int $size = null): UploadedFile
     {
-        return $this->getPhysicalTempFile($filename, $suffix);
+        $path = tempnam(sys_get_temp_dir(), 'shop-api-test-image-');
+        if (false === $path) {
+            throw new RuntimeException('getImage: unable to create a temporary file');
+        }
+
+        $this->temporaryFiles[] = $path;
+
+        if (!copy(self::FIXTURE_IMAGE_DIR . '/' . $filename, $path)) {
+            throw new RuntimeException(sprintf('getImage: unable to copy fixture image "%s"', $filename));
+        }
+
+        if (null !== $size) {
+            $this->inflateJpeg($path, $size);
+        }
+
+        return new UploadedFile($path, $clientName ?? $filename);
     }
 
     /**
@@ -526,10 +620,6 @@ abstract class BaseTest extends ApiTestCase
             $options['extra']['files']['imageFile'] = $this->replaceImagePlaceholder($options['extra']['files']['imageFile']);
         }
 
-        if (isset($options['extra']['files']['avatarFile']) && is_string($options['extra']['files']['avatarFile'])) {
-            $options['extra']['files']['avatarFile'] = $this->replaceImagePlaceholder($options['extra']['files']['avatarFile']);
-        }
-
         return $options;
     }
 
@@ -539,24 +629,41 @@ abstract class BaseTest extends ApiTestCase
             return $placeholder;
         }
 
-        $filename = self::IMAGE_PLACEHOLDER_MAPPING[$placeholder];
+        $image = self::IMAGE_PLACEHOLDER_MAPPING[$placeholder];
 
-        return $this->getImage($filename, __METHOD__);
+        return $this->getImage($image['file'], $image['name'] ?? null, $image['size'] ?? null);
     }
 
-    private function getPhysicalTempFile(string $filename, string $suffix): UploadedFile
+    /**
+     * Porte un JPEG a un poids exact en inserant des segments de commentaire (COM) juste
+     * apres le marqueur SOI. Les decodeurs les ignorent : l'image reste valide et garde ses
+     * dimensions, seul le poids change.
+     */
+    private function inflateJpeg(string $path, int $size): void
     {
-        $dir = 'images';
+        $data = (string) file_get_contents($path);
+        if (!str_starts_with($data, "\xFF\xD8")) {
+            throw new RuntimeException('inflateJpeg: only a JPEG can be inflated');
+        }
 
-        $cleanSuffix = explode('::', $suffix)[1];
+        $gap = $size - strlen($data);
+        if ($gap < 0 || ($gap > 0 && $gap < 4)) {
+            throw new RuntimeException(sprintf('inflateJpeg: cannot reach %d bytes from %d', $size, strlen($data)));
+        }
 
-        $tmpFilePath = sys_get_temp_dir() . '/' . $cleanSuffix . '.jpg';
+        $segments = '';
+        while ($gap > 0) {
+            $segmentSize = min($gap, self::JPEG_COMMENT_MAX_PAYLOAD + 4);
+            // Un reste de 1 a 3 octets ne tiendrait dans aucun segment : on le reporte.
+            if ($gap - $segmentSize > 0 && $gap - $segmentSize < 4) {
+                $segmentSize -= 4;
+            }
 
-        copy(
-            static::getContainer()->getParameter('kernel.project_dir') . '/assets/tests/' . $dir . '/' . $filename,
-            $tmpFilePath
-        );
+            $payloadSize = $segmentSize - 4;
+            $segments .= "\xFF\xFE" . pack('n', $payloadSize + 2) . str_repeat('A', $payloadSize);
+            $gap -= $segmentSize;
+        }
 
-        return new UploadedFile($tmpFilePath, $filename);
+        file_put_contents($path, substr($data, 0, 2) . $segments . substr($data, 2));
     }
 }

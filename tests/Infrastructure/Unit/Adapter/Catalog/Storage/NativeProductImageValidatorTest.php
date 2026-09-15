@@ -7,6 +7,8 @@ namespace App\Tests\Infrastructure\Unit\Adapter\Catalog\Storage;
 use App\Application\Shared\Port\FileInterface;
 use App\Domain\Catalog\Exception\InvalidProductImageException;
 use App\Infrastructure\Adapter\Catalog\Storage\NativeProductImageValidator;
+use Generator;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\DependencyInjection\ParameterBag\ParameterBag;
 
@@ -36,6 +38,23 @@ final class NativeProductImageValidatorTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
+    public static function provideAcceptedDimensions(): Generator
+    {
+        yield 'At the minimum' => [2, 2];
+        yield 'At the maximum' => [3, 3];
+        yield 'Minimum width, maximum height' => [2, 3];
+    }
+
+    #[DataProvider('provideAcceptedDimensions')]
+    public function testValidateAcceptsDimensionsWithinBounds(int $width, int $height): void
+    {
+        $file = $this->createFile($this->createPng($width, $height), 'image/png');
+
+        $this->validator(minDimension: 2, maxDimension: 3)->validate($file);
+
+        $this->addToAssertionCount(1);
+    }
+
     public function testValidateRejectsGifImages(): void
     {
         $gif = $this->createFile(
@@ -51,10 +70,7 @@ final class NativeProductImageValidatorTest extends TestCase
 
     public function testValidateRejectsMimeTypeThatDoesNotMatchTheImageContent(): void
     {
-        $file = $this->createFile(
-            $this->createTempFile(base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/wcAAwAB/8z9R5UAAAAASUVORK5CYII=')),
-            'image/jpeg',
-        );
+        $file = $this->createFile($this->createPng(1, 1), 'image/jpeg');
 
         $this->expectException(InvalidProductImageException::class);
         $this->expectExceptionMessage('Invalid product image file type: image/jpeg.');
@@ -73,11 +89,7 @@ final class NativeProductImageValidatorTest extends TestCase
             $this->assertSame('No product image file provided.', $exception->getMessage());
         }
 
-        $png = $this->createFile(
-            $this->createTempFile(base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/wcAAwAB/8z9R5UAAAAASUVORK5CYII=')),
-            'image/png',
-            101,
-        );
+        $png = $this->createFile($this->createPng(1, 1), 'image/png', 101);
 
         $this->expectException(InvalidProductImageException::class);
         $this->expectExceptionMessage('Product image file exceeds the maximum allowed size (100 bytes).');
@@ -85,17 +97,52 @@ final class NativeProductImageValidatorTest extends TestCase
         $this->validator(maxSize: 100, minDimension: 1, maxDimension: 1)->validate($png);
     }
 
-    public function testValidateRejectsDimensionsOutsideConfiguredRange(): void
+    public function testValidateRejectsUnreadableImages(): void
     {
-        $png = $this->createFile(
-            $this->createTempFile(base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/wcAAwAB/8z9R5UAAAAASUVORK5CYII=')),
-            'image/png',
-        );
+        $file = $this->createFile($this->createTempFile('not-an-image'), 'image/png');
 
         $this->expectException(InvalidProductImageException::class);
-        $this->expectExceptionMessage('Product image dimensions must be between 2 and 2000 pixels.');
+        $this->expectExceptionMessage('Product image file is not a readable image.');
 
-        $this->validator(minDimension: 2)->validate($png);
+        $this->validator()->validate($file);
+    }
+
+    public static function provideRejectedDimensions(): Generator
+    {
+        yield 'Width below the minimum' => [1, 2];
+        yield 'Height below the minimum' => [2, 1];
+        yield 'Width above the maximum' => [4, 3];
+        yield 'Height above the maximum' => [3, 4];
+    }
+
+    #[DataProvider('provideRejectedDimensions')]
+    public function testValidateRejectsDimensionsOutsideConfiguredRange(int $width, int $height): void
+    {
+        $file = $this->createFile($this->createPng($width, $height), 'image/png');
+
+        $this->expectException(InvalidProductImageException::class);
+        $this->expectExceptionMessage('Product image dimensions must be between 2 and 3 pixels.');
+
+        $this->validator(minDimension: 2, maxDimension: 3)->validate($file);
+    }
+
+    /**
+     * PNG niveaux de gris de la taille demandee, construit octet par octet : l'image `ci`
+     * n'embarque pas GD, et `getimagesize()` n'a besoin que d'un en-tete valide.
+     */
+    private function createPng(int $width, int $height): string
+    {
+        $chunk = static fn (string $type, string $data): string => pack('N', strlen($data))
+            . $type . $data . pack('N', crc32($type . $data));
+
+        $rows = str_repeat("\x00" . str_repeat("\x80", $width), $height);
+
+        return $this->createTempFile(
+            "\x89PNG\r\n\x1a\n"
+            . $chunk('IHDR', pack('NNCCCCC', $width, $height, 8, 0, 0, 0, 0))
+            . $chunk('IDAT', (string) gzcompress($rows))
+            . $chunk('IEND', ''),
+        );
     }
 
     private function createTempFile(string $contents): string

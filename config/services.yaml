@@ -70,6 +70,11 @@ when@prod:
       alias: api_platform.http_cache.purger.varnish.ban
 
 when@test:
+  parameters:
+    # Les tests API deposent de vraies images : hors de `public/`, elles ne se melent
+    # plus aux uploads du poste de dev. `var/` est ignore par git et par le build.
+    app.product_image.upload_directory: '%kernel.project_dir%/var/test/uploads/images/catalog/product'
+
   services:
     # Rendu public pour que les tests fonctionnels puissent forger des tokens
     # aux exp arbitraires (cas « token expire »).

@@ -23,6 +23,11 @@ final class InvalidProductImageException extends CatalogDomainException implemen
         return new self(sprintf('Product image file exceeds the maximum allowed size (%d bytes).', $maxSize));
     }
 
+    public static function unreadable(): self
+    {
+        return new self('Product image file is not a readable image.');
+    }
+
     public static function invalidDimensions(int $minDimension, int $maxDimension): self
     {
         return new self(sprintf(

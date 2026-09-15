@@ -14,8 +14,6 @@
 
 # Assets and user uploads
 /assets/*
-# Images lues par BaseTest : sans elles, les tests d'upload echouent sur un clone neuf (CI).
-!/assets/tests/
 /public/uploads/images/catalog/product/*
 !public/uploads/images/catalog/product/.gitkeep
 
