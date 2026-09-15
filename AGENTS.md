@@ -311,10 +311,15 @@ qu'un deploiement ne prend pas. C'est ce qui remplace les anciens « Commenter l
 production » — une consigne qu'il fallait penser a appliquer devient une propriete du fichier.
 **Ne pas remettre de reglage de developpement dans le fichier de base.**
 
-Le Dockerfile suit le meme decoupage : `base` → `vendor` → `prod` / `dev`. **Xdebug, Composer,
-`nano`, `telnet` et `ping` ne sont que dans `dev`** ; l'etape `vendor` lance `composer install
---no-dev` dans l'image, ce qui rend l'artefact reproductible et independant du poste qui l'a
-construit. Mesure : 1,80 Go avant, **769 Mo** en `prod`, contexte de build **1,1 Go → 5,9 Mo**.
+Le Dockerfile suit le meme decoupage : `base` → `vendor` → `prod` / `dev` / `ci`. **Xdebug,
+`nano`, `telnet` et `ping` ne sont que dans `dev` ; Composer, dans `dev` et `ci`** ; l'etape `vendor`
+lance `composer install --no-dev` dans l'image, ce qui rend l'artefact reproductible et independant
+du poste qui l'a construit. Mesure : 1,80 Go avant, **769 Mo** en `prod`, contexte de build
+**1,1 Go → 5,9 Mo**.
+
+L'etape `ci` est l'image des jobs de `.gitlab-ci.yml`. Elle part de `base`, et non d'un Dockerfile a
+part, pour que les tests tournent sur les extensions PHP de l'image deployee. Apres toute
+modification de `base` : `make ci-image-push`.
 
 Deux exclusions du `.dockerignore` sont volontairement **absentes**, et doivent le rester :
 `public/bundles/` (les assets de l'UI d'API Platform — exclus, `/api/docs` rend des 404 en prod) et

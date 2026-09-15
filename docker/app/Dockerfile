@@ -113,3 +113,22 @@ RUN { \
         echo "alias la='ls --color=auto -A'"; \
         echo "alias l='ls --color=auto -CF'"; \
     } >> ~/.bashrc
+
+
+# ==============================================================================
+# ci — image des jobs GitLab (.gitlab-ci.yml), construite par `make ci-image-push`.
+#
+# Elle part de `base` plutot que d'un Dockerfile a part : les tests tournent sur
+# exactement les extensions PHP de l'image deployee, sans copie a tenir a jour.
+#
+# Le code n'y est pas copie : le runner clone le depot dans le job. Composer
+# seulement — ni Xdebug (aucun job ne mesure la couverture), ni outil de diagnostic.
+# ==============================================================================
+FROM base AS ci
+
+COPY --from=composer:2.10.2 /usr/bin/composer /usr/bin/composer
+
+# Le runner execute ses propres commandes shell : ni la preparation des droits de
+# l'entrypoint, ni supervisord n'ont de sens dans un job.
+ENTRYPOINT []
+CMD ["bash"]

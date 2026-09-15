@@ -1,0 +1,53 @@
+# Pipeline de service_shop : analyse statique, style et tests, en parallele.
+#
+# Image : etape `ci` de docker/app/Dockerfile, soit les extensions PHP de l'image
+# deployee plus Composer. La reconstruire apres toute modification de l'etape
+# `base` : `make ci-image-push`.
+#
+# Aucune variable secrete n'est requise. La base MongoDB est jetable, et la suite
+# signe ses tokens avec la paire versionnee de config/jwt/test/.
+image: registry.gitlab.com/en-shop/back-php/serv-shop:ci
+
+stages:
+  - test
+
+variables:
+  COMPOSER_CACHE_DIR: "$CI_PROJECT_DIR/.composer-cache"
+
+default:
+  cache:
+    key:
+      files:
+        - composer.lock
+    paths:
+      - .composer-cache/
+  before_script:
+    - composer install --no-scripts --no-progress --prefer-dist
+
+phpstan:
+  stage: test
+  script:
+    - vendor/bin/phpstan analyse -c phpstan.dist.neon --no-progress
+
+php-cs-fixer:
+  stage: test
+  script:
+    - vendor/bin/php-cs-fixer fix --dry-run --diff
+
+phpunit:
+  stage: test
+  services:
+    - name: mongo:8
+      alias: mongodb
+      # Replica set mono-noeud, comme docker/mongodb/mongod.conf : un serveur standalone
+      # refuse les transactions, et MongoTransactionalTest passerait au rouge. Ni
+      # authentification ni keyFile : la base ne vit que le temps du job.
+      command: ["--replSet", "rs0", "--bind_ip_all"]
+  variables:
+    # `directConnection` et non `replicaSet=rs0` : le membre s'annonce sous le nom
+    # d'hote de son conteneur, que le job ne sait pas resoudre. Le primaire accepte
+    # les transactions en connexion directe.
+    MONGODB_URL: "mongodb://mongodb:27017/service_shop_test?directConnection=true"
+  script:
+    - php .gitlab/mongodb-replica-set.php mongodb:27017
+    - vendor/bin/phpunit --display-warnings --display-deprecations --display-phpunit-deprecations --display-notices
