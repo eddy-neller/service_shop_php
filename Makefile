@@ -354,6 +354,10 @@ rector-dry:
 consume: ## Depile l'outbox des Domain Events
 	@$(APP) bin/console messenger:consume domain_events -vv
 
+.PHONY: consume-async
+consume-async: ## Depile le transport async (RabbitMQ interne)
+	@$(APP) bin/console messenger:consume async -vv
+
 ## Les index ne sont pas crees par une migration : ils sont declares dans le mapping
 ## des documents et poses par cette commande. Sans elle, l'unicite des titres n'est
 ## garantie par rien — le findByTitle() des handlers est un check-then-act.

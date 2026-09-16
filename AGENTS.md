@@ -22,10 +22,11 @@ n'intervient a aucun moment — ne pas raisonner sur les deux piles a la fois.
   claims. Il possede desormais **ses propres donnees** : le catalogue, dans **sa** base MongoDB.
 - **N'est pas** : un emetteur. Il ne detient que la cle **publique**. Il est structurellement
   incapable de forger un token, et cette propriete doit etre preservee.
-- **N'a pas** : de broker ni le moindre acces a la base de `service_identity`. Aucune de ces dependances ne
-  doit etre ajoutee sans une raison metier explicite. L'outbox des Domain Events est une collection
-  de **sa** base ; le cache de queries vit dans un Redis **dedie** a ce service, partage entre ses
-  replicas et jamais mutualise avec `service_identity`.
+- **N'a pas** : le moindre acces a la base de `service_identity`, ni aucune infrastructure partagee
+  avec lui. L'outbox des Domain Events est une collection de **sa** base ; son RabbitMQ est
+  **interne** (transport `async`, a terme les reactions a ses Domain Events) et ne porte jamais de
+  trafic entre services ; le cache de queries vit dans un Redis **dedie** a ce service, partage entre
+  ses replicas et jamais mutualise avec `service_identity`.
 
 Le service demarre et repond **seul**, sans la stack de `service_identity`. C'est une propriete verifiee par
 `GET /health`, a preserver. Sa base lui appartient : `docker-compose.yaml` ne pointe vers aucune
@@ -192,6 +193,9 @@ ODM `ReferenceOne` stockee comme identifiant ; il n'existe pas de second champ `
 
 > Cycle de vie complet — evenements, transport, worker, idempotence : [`docs/domain_events.md`](docs/domain_events.md).
 > Cache de lecture et invalidation : [`docs/query_cache.md`](docs/query_cache.md).
+> Chaque option de `config/packages/messenger.yaml`, option par option :
+> [`docs/config/packages/messenger.md`](docs/config/packages/messenger.md) — `docs/config/` et
+> `docs/src/` reflettent l'arborescence du code.
 
 Les douze evenements du catalogue sont enregistres par les agregats, publies par les command
 handlers **dans** le callback transactionnel, et consommes par un worker Messenger.
@@ -260,6 +264,7 @@ front ──> gateway Kong :20800 ──> varnish (alias `service-shop`) ──>
                                   │                                              │
                                   └── reseau `en_shop_php_edge` ────────────────┘
                                                                              ├─ mongodb (replica set rs0)
+                                                                             ├─ rabbitmq (broker interne)
                                                                              └─ redis (cache de queries)
 ```
 
@@ -280,7 +285,7 @@ passerelle.**
 
 Le cloisonnement, lui, est renforce et non affaibli : en **production**, seul `varnish` rejoint
 `en_shop_php_edge`; en **developpement**, l'override y attache directement `nginx` pour conserver un
-profiler fiable. MongoDB, Redis et le service non expose restent sur le reseau par defaut de la
+profiler fiable. MongoDB, RabbitMQ, Redis et le service non expose restent sur le reseau par defaut de la
 stack, donc la regle « aucun acces a la base de `service_identity` » est garantie **par la
 topologie**, pas par discipline. Un reseau unique a plat la retrograderait en simple convention,
 sans qu'aucun test ne s'en apercoive.
@@ -296,8 +301,8 @@ le reseau partage et `nginx` y resoudrait sinon l'instance de `service_identity`
 ### Une seule image, deux roles
 
 `app` et `worker` sont **le meme artefact**, distingue par `SUPERVISOR_ROLE` que lit le `[include]` de
-`supervisor.conf` : `web` ne lance que php-fpm, `worker` ne lance que les deux consommateurs
-`domain_events`. Pas de cron : replique, le worker executerait chaque tache une fois par instance —
+`supervisor.conf` : `web` ne lance que php-fpm, `worker` ne lance que les consommateurs Messenger
+(`async` sur RabbitMQ, deux `domain_events` sur l'outbox). Pas de cron : replique, le worker executerait chaque tache une fois par instance —
 voir `docs/docker_compose_architecture.md`. L'ancre YAML `&app_image` garantit qu'ils designent la meme image.
 
 Construire deux images pour un meme code les ferait deriver en silence : **un worker qui ne tourne pas
@@ -453,6 +458,7 @@ make bash-app
 make bash-db          # shell mongosh
 make db-index         # (re)pose les index declares dans le mapping ODM
 make consume          # depile l'outbox a la main (Supervisor le fait deja en conteneur)
+make consume-async    # depile le transport async (RabbitMQ interne)
 make fixtures         # catalogue de dev : 30 categories, 1000 produits (PURGE la base)
 make jwt-public-key   # recopie la cle publique de l'emetteur
 make jwt-test-keys    # regenere la paire de test
@@ -610,8 +616,8 @@ C=$(reads); echo "miss=$((B-A)) hit=$((C-B))"   # miss > 0, hit = 0
 ## Checklist
 
 - [ ] Aucune cle privee dans le depot (`ls config/jwt/private.pem` doit echouer).
-- [ ] Aucun acces a la base de `service_identity` ni broker sans justification metier ; Redis reste dedie au
-      cache applicatif partage entre les replicas de ce service.
+- [ ] Aucun acces a la base de `service_identity`, aucune infrastructure partagee avec lui ; RabbitMQ
+      reste interne a ce service et Redis dedie au cache applicatif partage entre ses replicas.
 - [ ] `GET /health` repond sans que la stack de `service_identity` tourne.
 - [ ] `make unit` vert, sans test *risky*.
 - [ ] Aucune reference a Doctrine hors `src/Infrastructure/Persistence/` (`grep -rn Doctrine src/`).

@@ -44,7 +44,14 @@ services:
     ports:
       - "${REDIS_EXPOSED_PORT:-20913}:6379"
 
-# Seul `nginx` rejoint le reseau de la passerelle en developpement. MongoDB, Redis et Varnish restent sur le
+###> symfony/messenger with rabbitmq ###
+  rabbitmq:
+    ports:
+      - "${RABBITMQ_EXPOSED_PORT:-20918}:5672" # AMQP protocol
+      - "${RABBITMQ_MANAGEMENT_EXPOSED_PORT:-20919}:15672" # Management UI
+###< symfony/messenger with rabbitmq ###
+
+# Seul `nginx` rejoint le reseau de la passerelle en developpement. MongoDB, RabbitMQ, Redis et Varnish restent sur le
 # reseau par defaut de la stack : c'est ce qui garantit *par la topologie* qu'aucun
 # autre service ne peut joindre cette base, et inversement (cf. AGENTS.md).
 #

@@ -235,7 +235,8 @@ failed_domain_events:
 
 Le transport est écrit à la main (`MongoOutboxTransport`, `MongoOutboxTransportFactory`, adossés à
 `DomainEventOutbox`) : aucun transport livré ne convient. `doctrine://` suppose une base relationnelle ;
-`amqp://` suppose un broker absent ; et `redis://` détournerait le Redis dédié au cache de queries en broker.
+`amqp://` publierait sur le RabbitMQ interne, donc hors de la base et de sa transaction ; et `redis://`
+détournerait le Redis dédié au cache de queries en broker.
 Surtout, aucun de ces transports ne sait inscrire le message dans la transaction MongoDB de l'agrégat.
 
 ### La collection

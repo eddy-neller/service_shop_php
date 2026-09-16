@@ -4,7 +4,8 @@
 > Couche `src/Infrastructure/`. Règles transverses : voir `AGENTS.md` racine.
 >
 > **Ce fichier décrit `service_shop`.** La persistance est MongoDB via Doctrine
-> **ODM** ; il n'y a ni ORM, ni migration, ni clé étrangère, ni broker. Redis est autorisé seulement
+> **ODM** ; il n'y a ni ORM, ni migration, ni clé étrangère. RabbitMQ est le broker **interne** du
+> service (transport `async`), jamais partagé. Redis est autorisé seulement
 > pour le cache applicatif dédié et partagé entre les replicas de ce service. DQL, `Paginator`,
 > `#[ORM\Index]` et un `OneToMany` inverse ne s'appliquent pas ici.
 
@@ -258,5 +259,5 @@ compteraient dans le suivant.
 - [ ] `nbProduct` est maintenu explicitement par les cas d'usage.
 - [ ] Index déclarés dans le document, nommés explicitement, posés par `make db-index`.
 - [ ] Aucun code Infra ne dépend de `src/Presentation/`.
-- [ ] Aucun broker ni base relationnelle ajoutés ; Redis reste dédié au cache applicatif partagé.
+- [ ] Aucune base relationnelle ajoutée ; RabbitMQ reste interne au service ; Redis reste dédié au cache applicatif partagé.
 - [ ] `declare(strict_types=1);` dans tout nouveau fichier PHP.
