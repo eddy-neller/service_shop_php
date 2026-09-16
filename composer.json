@@ -16,6 +16,7 @@
         "nelmio/cors-bundle": "^2.6.1",
         "ramsey/uuid": "^4.7",
         "stof/doctrine-extensions-bundle": "^1.15",
+        "stripe/stripe-php": "^21.2",
         "symfony/amqp-messenger": "7.4.*",
         "symfony/asset": "7.4.*",
         "symfony/clock": "7.4.*",
