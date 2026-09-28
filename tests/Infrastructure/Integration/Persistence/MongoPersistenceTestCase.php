@@ -136,7 +136,7 @@ abstract class MongoPersistenceTestCase extends KernelTestCase
             self::$indexesEnsured = true;
         }
 
-        foreach (['product', 'category', 'customer', 'cart', 'domain_event_outbox'] as $collection) {
+        foreach (['product', 'category', 'customer', 'cart', 'domain_event_outbox', 'processed_event'] as $collection) {
             $database->selectCollection($collection)->deleteMany([]);
         }
 
