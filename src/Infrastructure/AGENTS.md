@@ -66,7 +66,8 @@ préventivement — le comportement par défaut est correct tant qu'il n'y a qu'
 ### Contrats internes à Infrastructure (≠ Ports)
 
 Une interface dont **aucun** use case ni service applicatif n'est consommateur n'est pas un Port :
-elle reste dans `src/Infrastructure/`, à côté de son implémentation.
+elle reste dans `src/Infrastructure/`, à côté de son implémentation — **sauf quand cette
+implémentation connaît le schéma**, voir « Où vit l'accès Mongo » plus bas.
 
 | Contrat interne | Implémentation | Consommateurs |
 |---|---|---|
@@ -90,6 +91,45 @@ peut être supprimée directement après le commit, sans comptage ni worker.
 ---
 
 ## Persistance MongoDB
+
+### Où vit l'accès Mongo
+
+**Un fichier qui connaît le schéma vit dans `src/Infrastructure/Persistence/`.** Le critère n'est pas
+« est-ce un document ? » mais « ce fichier nomme-t-il une collection, un champ, ou un opérateur du
+pilote ? ».
+
+Co-localiser interface et implémentation reste la norme — `Adapter/Uuid/`, `Adapter/Cache/`, dossiers
+nommés par la **fonction**, implémentation nommée par la technologie. Ramsey et le cache Symfony ne
+nomment aucune collection, donc rien ne les sépare de leur contrat.
+
+Dès que la persistance entre en jeu, ce service sépare, et il le fait déjà deux fois :
+
+| Contrat, chez ses consommateurs | Accès Mongo, dans `Persistence/` |
+|---|---|
+| `Application/Customer/Port/CustomerRepositoryInterface` | `Persistence/Mongo/Customer/MongoCustomerRepository` |
+| `Symfony/Messenger/Transport/MongoOutboxTransport` | `Persistence/Mongo/Outbox/DomainEventOutbox` |
+
+Le transport de l'outbox est le cas le plus parlant : il vit dans `Symfony/` parce qu'il implémente
+un contrat Messenger, et **délègue tout accès collection** à `DomainEventOutbox`. Son propre docblock
+le dit — « ce qui garde Doctrine hors de `Symfony/` ».
+
+Mettre un contrat auprès de son adaptateur de persistance coûterait trois choses : la flèche de
+dépendance s'inverserait (le consommateur dépendrait du paquet de persistance jusque dans son
+namespace), le nom laisserait croire que Doctrine fait partie du contrat, et un second adaptateur —
+un double en mémoire dans un test, un stockage Redis — n'aurait plus de place logique.
+
+Vérification, qui ne doit rendre que les exceptions ci-dessous :
+
+```bash
+grep -rn '^use Doctrine' src/ | grep -v 'src/Infrastructure/Persistence'
+```
+
+- **Exception assumée** : les fixtures (`Symfony/DataFixtures/**`) étendent le `Fixture` du bundle et
+  reçoivent un `ObjectManager`. Il n'existe pas de version sans Doctrine.
+- **Écart connu, à corriger** : `Symfony/Command/Catalog/NbProductCommand` injecte le
+  `DocumentManager`, interroge `CategoryDocument` et flushe lui-même. Le corriger demande d'extraire
+  le recalcul dans `Persistence/` ou dans un cas d'usage — un chantier pour lui-même, pas un
+  déplacement de `use`.
 
 ### Contrat des repositories
 
