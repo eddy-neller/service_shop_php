@@ -192,6 +192,8 @@ ODM `ReferenceOne` stockee comme identifiant ; il n'existe pas de second champ `
 ## Domain Events : un outbox qui doit rejoindre le flush
 
 > Cycle de vie complet — evenements, transport, worker, idempotence : [`docs/domain_events.md`](docs/domain_events.md).
+> Deduplication a la reception, et pourquoi un message arrive deux fois :
+> [`docs/src/Infrastructure/Persistence/Mongo/Inbox/Inbox.md`](docs/src/Infrastructure/Persistence/Mongo/Inbox/Inbox.md).
 > Cache de lecture et invalidation : [`docs/query_cache.md`](docs/query_cache.md).
 > Chaque option de `config/packages/messenger.yaml`, option par option :
 > [`docs/config/packages/messenger.md`](docs/config/packages/messenger.md) — `docs/config/` et

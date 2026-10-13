@@ -6,7 +6,51 @@ fait métier dans un agrégat jusqu'à l'exécution de ses réactions, en passan
 d'atomicité et la déduplication des redélivrances.
 
 Pour la mécanique CQRS elle-même (bus de commandes/requêtes, middlewares, adapters), voir
-[`CQRS_messenger.md`](CQRS_messenger.md).
+[`CQRS_messenger.md`](CQRS_messenger.md). Pour la déduplication côté réception, voir
+[`src/Infrastructure/Persistence/Mongo/Inbox/Inbox.md`](src/Infrastructure/Persistence/Mongo/Inbox/Inbox.md).
+
+---
+
+## L'idée, en clair
+
+Un produit est créé. Deux choses doivent se passer : **l'enregistrer en base**, et **prévenir qui
+s'y intéresse** (vider un cache, plus tard envoyer un e-mail). Si on fait les deux séparément, il
+existe un instant où l'une a réussi et l'autre pas :
+
+| Ce qui casse | Résultat |
+|---|---|
+| On prévient, puis la base échoue | tout le monde réagit à un produit qui n'existe pas |
+| On enregistre, puis prévenir échoue | le produit existe, personne ne le sait, et rien ne le rattrapera |
+
+**La parade est de n'écrire qu'une seule fois.** Le message n'est pas envoyé : il est **écrit dans
+la base, à côté du produit, dans la même transaction**. Les deux réussissent ensemble ou échouent
+ensemble ; aucun état intermédiaire n'est possible.
+
+Cette table de messages en attente s'appelle un **outbox** — une « boîte d'envoi ». Un second
+processus, le **worker**, la relit en boucle, exécute les réactions, puis supprime la ligne.
+
+```text
+requête HTTP ──▶ [ produit + message ]  une seule transaction
+                         │
+                         ▼
+                   outbox (collection MongoDB)
+                         │
+                         ▼
+                   worker ──▶ réactions (vider le cache, …)
+```
+
+Trois mots qui reviennent ensuite dans ce document :
+
+- **outbox** : la collection où les messages attendent d'être traités ;
+- **worker** : le processus séparé qui les consomme (`messenger:consume`) ;
+- **redélivrance** : un message repris parce que le worker est mort avant de finir. C'est ce qui
+  garantit qu'aucun message ne se perd — et, en échange, ce qui impose que les réactions
+  supportent d'être rejouées. Voir [`src/Infrastructure/Persistence/Mongo/Inbox/Inbox.md`](src/Infrastructure/Persistence/Mongo/Inbox/Inbox.md).
+
+Le reste de ce document explique **comment** c'est tenu, et ce qui casserait silencieusement si on
+s'en écartait.
+
+---
 
 ## La contrainte transactionnelle MongoDB
 
