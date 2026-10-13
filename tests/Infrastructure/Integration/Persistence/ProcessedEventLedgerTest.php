@@ -5,18 +5,25 @@ declare(strict_types=1);
 namespace App\Tests\Infrastructure\Integration\Persistence;
 
 use App\Application\Shared\Port\ClockInterface;
+use App\Domain\Customer\Model\Customer;
+use App\Domain\Customer\ValueObject\CustomerId;
+use App\Domain\Customer\ValueObject\UserAccountId;
 use App\Infrastructure\Persistence\Mongo\Inbox\ProcessedEventLedger;
 use App\Infrastructure\Symfony\Messenger\Event\ProcessedEventLedgerInterface;
 use App\Infrastructure\Symfony\Messenger\Event\ProcessedEventSource;
 use DateTimeImmutable;
 use MongoDB\BSON\UTCDateTime;
+use RuntimeException;
+use Throwable;
 
 /**
- * Ce que ce test protege : **le marquage est idempotent, et deux flux cohabitent sans se voir**.
+ * Ce que ce test protege : **le marquage vit et meurt avec l'effet qu'il atteste**.
  *
- * L'inbox n'a d'interet que rejouee : un test qui ne marquerait qu'une fois passerait au vert
- * meme si l'index unique manquait ou si un second marquage levait une exception — c'est-a-dire
- * precisement dans le cas ou elle doit servir.
+ * C'est la seule propriete pour laquelle l'inbox merite d'exister. Un marquage engage par une
+ * ecriture propre fonctionnerait en apparence — la ligne arriverait, les doublons seraient
+ * ecartes — mais survivrait au rollback de l'effet : le message passerait pour traite alors qu'il
+ * n'a rien produit, et son effet serait perdu definitivement, sans erreur nulle part. Seul le cas
+ * du rollback ci-dessous revele la faute.
  */
 final class ProcessedEventLedgerTest extends MongoPersistenceTestCase
 {
@@ -25,6 +32,10 @@ final class ProcessedEventLedgerTest extends MongoPersistenceTestCase
     private const string EVENT_ID = '018f3a40-0000-7000-8000-000000000001';
 
     private const string HANDLER = 'App\\Tests\\Fake\\SomeHandler';
+
+    private const string OTHER_HANDLER = 'App\\Tests\\Fake\\OtherHandler';
+
+    private const string ACCOUNT_ID = '550e8400-e29b-41d4-a716-446655440011';
 
     private ProcessedEventLedgerInterface $ledger;
 
@@ -45,22 +56,62 @@ final class ProcessedEventLedgerTest extends MongoPersistenceTestCase
     {
         self::assertFalse($this->ledger->hasProcessed(self::EVENT_ID, self::HANDLER));
 
-        $this->ledger->markProcessed(self::EVENT_ID, self::HANDLER, ProcessedEventSource::Bus);
+        $this->mark(self::HANDLER);
 
         self::assertTrue($this->ledger->hasProcessed(self::EVENT_ID, self::HANDLER));
     }
 
-    /**
-     * Le cas qui compte : une redelivrance. Le second marquage ne doit ni lever, ni dupliquer la
-     * ligne, ni repousser l'expiration posee par le premier.
-     */
-    public function testMarkingTwiceKeepsTheFirstLineUntouched(): void
+    public function testTheMarkingIsCommittedWithTheBusinessWrite(): void
     {
-        $this->ledger->markProcessed(self::EVENT_ID, self::HANDLER, ProcessedEventSource::Bus);
+        $customerId = $this->customers->nextIdentity();
+
+        $this->transactional->transactional(function () use ($customerId): void {
+            $this->customers->save($this->aCustomer($customerId));
+
+            $this->ledger->markProcessed(self::EVENT_ID, self::HANDLER, ProcessedEventSource::Bus);
+        });
+
+        self::assertTrue($this->ledger->hasProcessed(self::EVENT_ID, self::HANDLER));
+        self::assertNotNull($this->customers->findById($customerId));
+    }
+
+    /**
+     * **Le test qui justifie le `persist()`.** L'ecriture metier echoue, donc le marquage disparait
+     * avec elle : le message sera rejoue, et l'effet applique une seule fois.
+     */
+    public function testTheMarkingIsRolledBackWithTheBusinessWrite(): void
+    {
+        $customerId = $this->customers->nextIdentity();
+
+        $failure = $this->transactionalFailure(function () use ($customerId): void {
+            $this->customers->save($this->aCustomer($customerId));
+
+            $this->ledger->markProcessed(self::EVENT_ID, self::HANDLER, ProcessedEventSource::Bus);
+
+            throw new RuntimeException('effet metier interrompu');
+        });
+
+        self::assertInstanceOf(RuntimeException::class, $failure);
+        self::assertFalse($this->ledger->hasProcessed(self::EVENT_ID, self::HANDLER));
+        self::assertNull($this->customers->findById($customerId));
+        self::assertSame(0, $this->lineCount());
+    }
+
+    /**
+     * Une redelivrance qui franchirait la garde se heurte a l'index unique : le flush echoue, donc
+     * la transaction entiere, et l'effet n'est pas applique deux fois. La ligne d'origine, elle,
+     * reste intacte — `hasProcessed()` existe pour ne pas en arriver la sur le chemin nominal.
+     */
+    public function testASecondMarkingFailsItsTransactionAndLeavesTheFirstLineIntact(): void
+    {
+        $this->mark(self::HANDLER);
         $first = $this->line();
 
-        $this->ledger->markProcessed(self::EVENT_ID, self::HANDLER, ProcessedEventSource::Bus);
+        $failure = $this->transactionalFailure(function (): void {
+            $this->ledger->markProcessed(self::EVENT_ID, self::HANDLER, ProcessedEventSource::Bus);
+        });
 
+        self::assertInstanceOf(Throwable::class, $failure);
         self::assertSame(1, $this->lineCount());
         self::assertEquals($first['processedAt'], $this->line()['processedAt']);
         self::assertEquals($first['expiresAt'], $this->line()['expiresAt']);
@@ -72,15 +123,13 @@ final class ProcessedEventLedgerTest extends MongoPersistenceTestCase
      */
     public function testTheSameEventCanBeProcessedByTwoHandlers(): void
     {
-        $other = 'App\\Tests\\Fake\\OtherHandler';
+        $this->mark(self::HANDLER);
 
-        $this->ledger->markProcessed(self::EVENT_ID, self::HANDLER, ProcessedEventSource::Bus);
+        self::assertFalse($this->ledger->hasProcessed(self::EVENT_ID, self::OTHER_HANDLER));
 
-        self::assertFalse($this->ledger->hasProcessed(self::EVENT_ID, $other));
+        $this->mark(self::OTHER_HANDLER);
 
-        $this->ledger->markProcessed(self::EVENT_ID, $other, ProcessedEventSource::Bus);
-
-        self::assertTrue($this->ledger->hasProcessed(self::EVENT_ID, $other));
+        self::assertTrue($this->ledger->hasProcessed(self::EVENT_ID, self::OTHER_HANDLER));
         self::assertSame(2, $this->lineCount());
     }
 
@@ -91,12 +140,28 @@ final class ProcessedEventLedgerTest extends MongoPersistenceTestCase
      */
     public function testEachSourceCarriesItsOwnExpiry(): void
     {
-        $this->ledger->markProcessed(self::EVENT_ID, self::HANDLER, ProcessedEventSource::Bus);
-        $this->ledger->markProcessed(self::EVENT_ID, 'App\\Tests\\Fake\\OutboxHandler', ProcessedEventSource::Outbox);
+        $this->mark(self::HANDLER, ProcessedEventSource::Bus);
+        $this->mark(self::OTHER_HANDLER, ProcessedEventSource::Outbox);
 
         self::assertSame(30, $this->retentionDaysOf(self::HANDLER));
-        self::assertSame(7, $this->retentionDaysOf('App\\Tests\\Fake\\OutboxHandler'));
+        self::assertSame(7, $this->retentionDaysOf(self::OTHER_HANDLER));
         self::assertSame('bus.identity', $this->line()['source']);
+    }
+
+    private function mark(string $handler, ProcessedEventSource $source = ProcessedEventSource::Bus): void
+    {
+        $this->transactional->transactional(function () use ($handler, $source): void {
+            $this->ledger->markProcessed(self::EVENT_ID, $handler, $source);
+        });
+    }
+
+    private function aCustomer(CustomerId $customerId): Customer
+    {
+        return Customer::create(
+            $customerId,
+            new DateTimeImmutable(),
+            UserAccountId::fromString(self::ACCOUNT_ID),
+        );
     }
 
     private function retentionDaysOf(string $handler): int

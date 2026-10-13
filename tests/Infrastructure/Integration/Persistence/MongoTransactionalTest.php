@@ -191,17 +191,6 @@ final class MongoTransactionalTest extends MongoPersistenceTestCase
      * verifier l'etat de la base ensuite. Un `expectException()` couperait le test avant
      * ces assertions, qui sont precisement l'objet du garde-fou.
      */
-    private function transactionalFailure(callable $operation): ?Throwable
-    {
-        try {
-            $this->transactional->transactional($operation);
-        } catch (Throwable $exception) {
-            return $exception;
-        }
-
-        return null;
-    }
-
     /**
      * Compte en interrogeant la collection brute.
      *

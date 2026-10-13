@@ -242,17 +242,6 @@ final class DomainEventOutboxTest extends MongoPersistenceTestCase
         });
     }
 
-    private function transactionalFailure(callable $operation): ?Throwable
-    {
-        try {
-            $this->transactional->transactional($operation);
-        } catch (Throwable $exception) {
-            return $exception;
-        }
-
-        return null;
-    }
-
     /**
      * @return iterable<array<string, mixed>>
      */

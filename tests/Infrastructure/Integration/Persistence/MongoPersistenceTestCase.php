@@ -22,6 +22,7 @@ use DateTimeImmutable;
 use Doctrine\ODM\MongoDB\DocumentManager;
 use MongoDB\Database;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Throwable;
 
 /**
  * Base des tests qui touchent un vrai MongoDB.
@@ -110,6 +111,23 @@ abstract class MongoPersistenceTestCase extends KernelTestCase
     protected function slugify(string $value): string
     {
         return strtolower(str_replace(' ', '-', $value));
+    }
+
+    /**
+     * Execute l'operation dans une transaction et rend l'exception qui l'a interrompue.
+     *
+     * Les tests de rollback en ont tous besoin : ecrire le `try/catch` sur place ferait croire a
+     * PHPStan que la suite du bloc est injoignable, le callback se terminant par un `throw`.
+     */
+    protected function transactionalFailure(callable $operation): ?Throwable
+    {
+        try {
+            $this->transactional->transactional($operation);
+        } catch (Throwable $exception) {
+            return $exception;
+        }
+
+        return null;
     }
 
     protected function database(): Database
