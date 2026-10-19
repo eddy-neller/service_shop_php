@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Infrastructure\Unit\Symfony\Messenger\Event\Handler;
+namespace App\Tests\Infrastructure\Unit\Symfony\Messenger\Event\Domain\Handler;
 
 use App\Domain\Catalog\Event\Category\CategoryCreatedEvent;
 use App\Domain\Catalog\Event\Category\CategoryMovedEvent;
 use App\Domain\Catalog\ValueObject\CategoryId;
-use App\Infrastructure\Symfony\Messenger\Event\Handler\LogDomainEventHandler;
+use App\Infrastructure\Symfony\Messenger\Event\Domain\Handler\LogDomainEventHandler;
 use DateTimeImmutable;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;

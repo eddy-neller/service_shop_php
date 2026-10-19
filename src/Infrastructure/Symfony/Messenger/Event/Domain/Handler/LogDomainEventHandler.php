@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Infrastructure\Symfony\Messenger\Event\Handler;
+namespace App\Infrastructure\Symfony\Messenger\Event\Domain\Handler;
 
 use App\Domain\SharedKernel\Event\DomainEventInterface;
 use Psr\Log\LoggerInterface;

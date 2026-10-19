@@ -9,7 +9,7 @@ use App\Domain\SharedKernel\Event\DomainEventInterface;
 use App\Infrastructure\Adapter\Cache\CatalogHttpCacheTags;
 use App\Infrastructure\Adapter\Cache\DomainEventCacheTags;
 use App\Infrastructure\Adapter\Cache\QueryCacheInterface;
-use App\Infrastructure\Symfony\Messenger\Event\PublishedDomainEventCollector;
+use App\Infrastructure\Symfony\Messenger\Event\Domain\PublishedDomainEventCollector;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Middleware\MiddlewareInterface;
 use Symfony\Component\Messenger\Middleware\StackInterface;

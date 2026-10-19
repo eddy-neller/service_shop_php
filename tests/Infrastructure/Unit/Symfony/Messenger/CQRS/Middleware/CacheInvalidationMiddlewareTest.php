@@ -13,7 +13,7 @@ use App\Infrastructure\Adapter\Cache\CatalogHttpCacheTags;
 use App\Infrastructure\Adapter\Cache\DomainEventCacheTags;
 use App\Infrastructure\Adapter\Cache\QueryCacheInterface;
 use App\Infrastructure\Symfony\Messenger\CQRS\Middleware\CacheInvalidationMiddleware;
-use App\Infrastructure\Symfony\Messenger\Event\PublishedDomainEventCollector;
+use App\Infrastructure\Symfony\Messenger\Event\Domain\PublishedDomainEventCollector;
 use Closure;
 use DateTimeImmutable;
 use PHPUnit\Framework\MockObject\MockObject;

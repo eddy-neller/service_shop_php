@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\Infrastructure\Unit\Symfony\Messenger\Event;
+namespace App\Tests\Infrastructure\Unit\Symfony\Messenger\Event\Domain;
 
 use App\Application\Shared\Port\ClockInterface;
 use App\Domain\Catalog\Event\Category\CategoryCreatedEvent;
@@ -11,8 +11,8 @@ use App\Domain\Catalog\ValueObject\CategoryId;
 use App\Domain\Catalog\ValueObject\ProductId;
 use App\Infrastructure\Persistence\Mongo\Outbox\DomainEventDocument;
 use App\Infrastructure\Persistence\Mongo\Outbox\DomainEventOutbox;
-use App\Infrastructure\Symfony\Messenger\Event\MongoDomainEventBus;
-use App\Infrastructure\Symfony\Messenger\Event\PublishedDomainEventCollector;
+use App\Infrastructure\Symfony\Messenger\Event\Domain\MongoDomainEventBus;
+use App\Infrastructure\Symfony\Messenger\Event\Domain\PublishedDomainEventCollector;
 use DateTimeImmutable;
 use Doctrine\ODM\MongoDB\DocumentManager;
 use PHPUnit\Framework\MockObject\MockObject;

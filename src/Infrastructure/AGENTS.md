@@ -36,7 +36,7 @@
 | `Shared\Port\TransactionalInterface` | `MongoTransactional` | `Persistence/Mongo/` |
 | `Shared\Port\SlugGeneratorInterface` | `SymfonySlugGenerator` | `Adapter/Catalog/` |
 | `Shared\Port\FileInterface` | `SymfonyFileAdapter` | **`src/Presentation/Shared/Adapter/`** |
-| `Shared\Port\DomainEventBusInterface` | `MongoDomainEventBus` | `Symfony/Messenger/Event/` |
+| `Shared\Port\DomainEventBusInterface` | `MongoDomainEventBus` | `Symfony/Messenger/Event/Domain/` |
 | `Catalog\Port\CategoryRepositoryInterface` | `MongoCategoryRepository` | `Persistence/Mongo/Catalog/` |
 | `Catalog\Port\ProductRepositoryInterface` | `MongoProductRepository` | `Persistence/Mongo/Catalog/` |
 | `Catalog\Port\ProductImageUrlResolverInterface` | `ProductImageUrlResolver` | `Adapter/Catalog/Storage/` |
@@ -179,7 +179,7 @@ Trois classes, trois responsabilités qu'il ne faut pas fondre :
 
 | Classe | Emplacement | Rôle |
 |---|---|---|
-| `MongoDomainEventBus` | `Symfony/Messenger/Event/` | implémente le Port, encode, pose le `BusNameStamp` |
+| `MongoDomainEventBus` | `Symfony/Messenger/Event/Domain/` | implémente le Port, encode, pose le `BusNameStamp` |
 | `MongoOutboxTransport` | `Symfony/Messenger/Transport/` | traduit `OutboxRecord` ↔ `Envelope`, acquitte |
 | `DomainEventOutbox` | `Persistence/Mongo/Outbox/` | **seul à connaître Doctrine** : `persist()`, `claim()`, `remove()` |
 

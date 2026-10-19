@@ -367,7 +367,7 @@ atomique, et leur seul handler est la journalisation idempotente.
 > `docker compose up -d app`, pas seulement un redémarrage. Surveiller
 > `messenger:failed:show --transport=failed_domain_events`.
 
-Les handlers vivent dans `src/Infrastructure/Symfony/Messenger/Event/Handler/`, annotés
+Les handlers vivent dans `src/Infrastructure/Symfony/Messenger/Event/Domain/Handler/`, annotés
 `#[AsMessageHandler(bus: 'event.bus')]`. Un handler peut couvrir plusieurs événements en portant
 l'attribut sur plusieurs méthodes.
 

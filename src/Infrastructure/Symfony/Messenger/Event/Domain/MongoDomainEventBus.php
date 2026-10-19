@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Infrastructure\Symfony\Messenger\Event;
+namespace App\Infrastructure\Symfony\Messenger\Event\Domain;
 
 use App\Application\Shared\Port\DomainEventBusInterface;
 use App\Domain\SharedKernel\Event\DomainEventInterface;
