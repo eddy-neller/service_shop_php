@@ -43,9 +43,9 @@ final class ProcessedEventLedgerTest extends MongoPersistenceTestCase
     {
         parent::setUp();
 
-        // L'adaptateur est construit ici plutot que tire du conteneur : personne ne l'injecte
-        // encore, donc son alias est supprime a la compilation. Le cablage sera exerce par le
-        // handler du bus, qui arrive avec le transport.
+        // L'adaptateur est construit ici plutot que tire du conteneur : c'est lui qu'on verifie,
+        // pas son cablage. Les deux chemins d'ecriture sont exerces directement, sans passer par
+        // un handler qui en masquerait l'ordre.
         $clock = self::getContainer()->get(ClockInterface::class);
         self::assertInstanceOf(ClockInterface::class, $clock);
 
@@ -115,6 +115,82 @@ final class ProcessedEventLedgerTest extends MongoPersistenceTestCase
         self::assertSame(1, $this->lineCount());
         self::assertEquals($first['processedAt'], $this->line()['processedAt']);
         self::assertEquals($first['expiresAt'], $this->line()['expiresAt']);
+    }
+
+    /**
+     * Le second chemin d'ecriture, pour les handlers qui ne detiennent pas la transaction de leur
+     * effet : il engage seul, sans rien attendre de personne.
+     */
+    public function testTheFlushingVariantIsDurableWithoutATransaction(): void
+    {
+        $this->ledger->markProcessedAndFlush(self::EVENT_ID, self::HANDLER, ProcessedEventSource::Bus);
+
+        self::assertTrue($this->ledger->hasProcessed(self::EVENT_ID, self::HANDLER));
+        self::assertSame(1, $this->lineCount());
+        self::assertSame(30, $this->retentionDaysOf(self::HANDLER));
+    }
+
+    /**
+     * **Le test qui justifie les deux methodes.** `markProcessed()` seul n'ecrit rien : sans flush
+     * derriere, le document persiste est oublie, sans erreur ni log. C'est le piege que le suffixe
+     * `AndFlush` existe pour rendre visible — et le symptome serait une deduplication qui ne
+     * deduplique pas.
+     */
+    public function testMarkProcessedAloneWritesNothing(): void
+    {
+        $this->ledger->markProcessed(self::EVENT_ID, self::HANDLER, ProcessedEventSource::Bus);
+
+        self::assertFalse($this->ledger->hasProcessed(self::EVENT_ID, self::HANDLER));
+        self::assertSame(0, $this->lineCount());
+
+        // Le document reste programme dans l'unite de travail : la vider, pour qu'un flush
+        // ulterieur ne l'ecrive pas apres coup.
+        $this->documentManager->clear();
+    }
+
+    /**
+     * La contrepartie de cette durabilite immediate : la ligne **ne participe a aucune transaction
+     * suivante**. C'est pourquoi ce chemin ne s'appelle qu'**apres** l'effet — marquer avant
+     * echangerait un doublon au rejeu contre une perte definitive.
+     */
+    public function testTheFlushingVariantSurvivesALaterRollback(): void
+    {
+        $customerId = $this->customers->nextIdentity();
+
+        $this->ledger->markProcessedAndFlush(self::EVENT_ID, self::HANDLER, ProcessedEventSource::Bus);
+
+        $failure = $this->transactionalFailure(function () use ($customerId): void {
+            $this->customers->save($this->aCustomer($customerId));
+
+            throw new RuntimeException('effet metier interrompu');
+        });
+
+        self::assertInstanceOf(RuntimeException::class, $failure);
+        self::assertNull($this->customers->findById($customerId));
+        self::assertTrue($this->ledger->hasProcessed(self::EVENT_ID, self::HANDLER));
+    }
+
+    /**
+     * Hors transaction aussi, c'est l'index unique qui garantit l'unicite : le second appel echoue
+     * et laisse la premiere ligne seule. Le message est alors rejoue, et la garde le voit traite.
+     */
+    public function testASecondFlushingMarkingIsRejectedByTheUniqueIndex(): void
+    {
+        $this->ledger->markProcessedAndFlush(self::EVENT_ID, self::HANDLER, ProcessedEventSource::Bus);
+
+        $failure = null;
+
+        try {
+            $this->ledger->markProcessedAndFlush(self::EVENT_ID, self::HANDLER, ProcessedEventSource::Bus);
+        } catch (Throwable $exception) {
+            $failure = $exception;
+        } finally {
+            // Un flush interrompu laisse l'unite de travail incoherente : la vider avant la suite.
+            $this->documentManager->clear();
+        }
+
+        self::assertInstanceOf(Throwable::class, $failure);
+        self::assertSame(1, $this->lineCount());
     }
 
     /**

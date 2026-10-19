@@ -61,12 +61,13 @@ Ni l'une ni l'autre ne suffit seule :
 | | Inbox | Convergence du cas d'usage |
 |---|---|---|
 | Doublon sur le chemin nominal (redelivrance apres ack perdu) | **evite**, meme pour un effet non convergent | absorbe, si le handler converge |
-| Panne entre l'effet et son marquage | **fermee** : marquage et ecriture metier partagent la transaction | **rattrape** |
-| Deux workers sur la meme redelivrance, en parallele | le perdant voit sa transaction echouer, puis rejoue | **rattrape** |
+| Panne entre l'effet et son marquage | fermee **seulement** quand les deux partagent une transaction | **rattrape** |
+| Deux workers sur la meme redelivrance, en parallele | le perdant est rejete par l'index unique, puis rejoue | **rattrape** |
 
-L'inbox dedoublonne ; la convergence reste le filet. Et le jour ou un effet **externe** arrivera,
-aucune transaction ne pourra plus fermer la premiere ligne — raison de plus pour garder les cas
-d'usage convergents quand ils peuvent l'etre.
+L'inbox dedoublonne ; la convergence reste le filet. Et elle n'est pas optionnelle : des que le
+handler ne detient pas la transaction de son effet — effet externe, ou effet commite par la commande
+qu'il dispatche — plus aucune transaction ne ferme la deuxieme ligne. **C'est le cas de tous les
+handlers du bus inter-services**, d'ou l'insistance sur des cas d'usage commutatifs et idempotents.
 
 ## Le contrat
 
@@ -77,11 +78,16 @@ interface ProcessedEventLedgerInterface
 
     // rejoint le flush de l'appelant, donc sa transaction
     public function markProcessed(string $eventId, string $handler, ProcessedEventSource $source): void;
+
+    // engage tout de suite, hors transaction metier
+    public function markProcessedAndFlush(string $eventId, string $handler, ProcessedEventSource $source): void;
 }
 ```
 
-`hasProcessed()` sert de garde d'entree, `markProcessed()` enregistre le traitement — **dans la
-transaction de l'effet** :
+`hasProcessed()` sert de garde d'entree. Le marquage, lui, a **deux chemins d'ecriture**, et le bon
+depend d'une seule question : **le handler detient-il la transaction de son effet ?**
+
+### Oui : `markProcessed()`, dans la transaction
 
 ```text
 handler(message)
@@ -94,10 +100,42 @@ handler(message)
         });                      un seul commit : les deux, ou aucun des deux
 ```
 
-C'est l'**exactement-une-fois sur le chemin nominal**.
+C'est l'**exactement-une-fois sur le chemin nominal**, et le seul chemin qui l'atteigne.
+
+### Non : `markProcessedAndFlush()`, apres l'effet
+
+Deux handlers ne tiennent pas cette transaction : celui dont l'effet est **externe** — un e-mail,
+un paiement, qu'aucune transaction ne peut couvrir — et celui dont l'effet est **commite par
+quelqu'un d'autre**, comme le handler du bus inter-services, qui dispatche une commande dont le cas
+d'usage ouvre et valide sa propre transaction.
+
+```text
+handler(message)
+    |
+    +-- hasProcessed(eventId, handler::class) ?  -> oui : ack, ne rien faire
+    |
+    +-- l'effet                       (commande dispatchee, e-mail envoye...)
+    |
+    `-- markProcessedAndFlush(...)    ecriture durable immediate, son propre commit
+```
+
+La garantie tombe alors a l'**au-moins-une-fois dedoublonne** : une panne entre les deux fait
+rejouer l'effet. C'est ce que la convergence du handler rattrape — et c'est pourquoi le marquage
+vient **apres** l'effet, jamais avant :
+
+| Ordre | Panne entre les deux |
+|---|---|
+| Effet, puis marquage | l'effet est **rejoue** — inoffensif si le handler converge |
+| Marquage, puis effet | l'effet est **perdu** definitivement, et rien ne le signale |
+
+> **Ne pas remplacer le second cas par une transaction englobante.** Si le handler du bus ouvrait un
+> `transactional()` autour du dispatch, le `flush()` du cas d'usage commiterait d'abord et le
+> marquage partirait dans un second commit : l'atomicite serait perdue **sans qu'aucune erreur
+> n'apparaisse**. Deux `transactional()` imbriques ne donnent pas une transaction imbriquee.
 
 L'interface vit dans `Infrastructure/Symfony/Messenger/Event/`, a cote des handlers qui s'en servent,
-et non dans `Application/` : la deduplication est une affaire de transport, pas de cas d'usage.
+et non dans `Application/` : la deduplication est une affaire de transport, pas de cas d'usage. Un
+cas d'usage ne recoit donc **pas** de cle d'idempotence — voir « L'option ecartee » plus bas.
 
 ### La cle : `(eventId, handler)`
 
@@ -125,7 +163,7 @@ collection sans fin : d'ou une duree bornee par provenance.
 
 ## L'adaptateur MongoDB : `ProcessedEventLedger`
 
-### Une seule ecriture, et elle rejoint la transaction
+### Deux ecritures, et le suffixe dit laquelle
 
 `markProcessed()` fait `persist()` et **ne flushe pas** : sa durabilite est celle de l'appelant,
 donc, dans un callback `TransactionalInterface`, le commit de l'ecriture metier. C'est le meme
@@ -133,30 +171,31 @@ chemin que l'`enqueue()` de l'outbox.
 
 > **Appele hors de tout flush, `markProcessed()` n'ecrit rien — et ne previent pas.** C'est la
 > nature de `persist()` : sans `flush()`, le document est oublie. Le symptome serait un
-> `hasProcessed()` eternellement faux, donc une deduplication qui ne deduplique pas, et aucun test
-> ni aucun log ne le signalerait. **L'appel doit etre dans le callback de `TransactionalInterface`.**
+> `hasProcessed()` eternellement faux, donc une deduplication qui ne deduplique pas, et aucun log
+> ne le signalerait. C'est le piege que couvre `testMarkProcessedAloneWritesNothing`.
 
-**Pourquoi c'est la seule option offerte** : marquer par une ecriture propre ferait **survivre la
-ligne au rollback** de l'effet. Le message serait repute traite alors qu'il n'a rien produit, et
-l'effet serait perdu definitivement — sans la moindre erreur nulle part. C'est le cas que couvre le
-test de rollback.
+`markProcessedAndFlush()` ajoute le `flush()`, et c'est tout — meme decoupage que l'`enqueue()` /
+`enqueueAndFlush()` de l'outbox, ou le suffixe signale deja « hors transaction metier ». Les deux
+methodes sont donc **distinguees par leur nom, jamais par leur seule signature** :
 
-Il n'y a donc **pas** de variante hors transaction. Elle aurait la meme signature pour une garantie
-plus faible : elle serait choisie par defaut par qui lit vite. Le jour ou un effet **externe**
-(e-mail, paiement, appel HTTP) l'exigera — aucune transaction ne couvrant un appel reseau — elle
-s'appellera `markProcessedAndFlush()`, comme l'`enqueueAndFlush()` de l'outbox dont le suffixe
-signale deja « hors transaction metier ». Il faudra alors choisir sa fenetre :
+> **Ne jamais offrir une troisieme variante qui aurait la signature de `markProcessed()` pour la
+> durabilite de l'autre.** Elle serait choisie par defaut par qui lit vite, et une ligne engagee
+> seule **survit au rollback** de son effet : le message passerait pour traite alors qu'il n'a rien
+> produit, et l'effet serait perdu definitivement — sans la moindre erreur nulle part. C'est le cas
+> que couvre le test de rollback.
 
-| Ordre | Risque assume |
-|---|---|
-| Effet, puis marquage | la panne empeche le marquage -> **doublon** au rejeu |
-| Marquage, puis effet | la panne empeche l'effet -> **perte** definitive |
+Le corollaire tient en une phrase : `markProcessedAndFlush()` ne s'appelle **qu'apres** l'effet.
+Avant, il echangerait le doublon au rejeu contre cette perte definitive.
 
 ### Un second marquage echoue, et c'est le bon comportement
 
 Deux workers peuvent traiter la meme redelivrance et franchir ensemble `hasProcessed()`. Le second
-`persist()` se heurte alors a l'index unique : **le flush echoue, donc la transaction entiere**.
-L'effet n'est pas applique deux fois, le message est rejoue, et la garde le voit traite.
+`persist()` se heurte alors a l'index unique : **le flush echoue**, et avec lui la transaction qui
+le portait. L'effet n'est pas applique deux fois, le message est rejoue, et la garde le voit traite.
+
+Par `markProcessedAndFlush()`, l'echec n'annule rien — l'effet est deja commite — mais l'exception
+remonte au worker, le message est rejoue, et la garde l'ecarte. Dans les deux cas, le resultat est
+une seule ligne et un seul effet.
 
 C'est l'index unique qui garantit l'unicite — pas la lecture `hasProcessed()` qui precede, qui n'est
 qu'un check-then-act destine a eviter ce detour sur le chemin nominal.
@@ -183,30 +222,43 @@ Index, poses par `make db-index` comme tous ceux du mapping :
 Sans `make db-index`, l'index unique manque : un double marquage ecrirait deux lignes au lieu d'etre
 absorbe, et l'index TTL ne purgerait rien.
 
-## Etat actuel
+## Qui appelle quel chemin
 
-L'adaptateur existe et est teste, mais **aucun handler ne l'injecte encore** : son alias est donc
-retire du conteneur a la compilation. Il sera cable par le handler du bus inter-services, qui arrive
-avec le transport SQS.
+Un seul critere, et il ne depend pas de l'etat du code : **qui detient la transaction de l'effet ?**
+
+| Appelant | Methode | Provenance |
+|---|---|---|
+| Handler d'evenement d'integration : il dispatche une commande, dont le cas d'usage ouvre **et valide** sa propre transaction | `markProcessedAndFlush()`, apres le dispatch | `bus.identity` |
+| Handler qui ouvre lui-meme la transaction de son effet | `markProcessed()`, dans le callback | `outbox` |
 
 Cote outbox, `LogDomainEventHandler` n'en a pas besoin : journaliser deux fois est sans consequence.
+Le premier handler de Domain Event porteur d'un effet non convergent relevera de la seconde ligne.
 
-### Ce que le cablage devra resoudre
+### L'option ecartee : la cle d'idempotence dans la couche Application
 
-La transaction est ouverte par le **cas d'usage**, pas par le handler du bus. Pour que le marquage
-y entre, l'`eventId` doit donc descendre jusqu'a la couche Application. Deux options, a trancher en
-ecrivant le consommateur :
+Pour atteindre l'exactement-une-fois, il fallait que le marquage entre dans la transaction du cas
+d'usage — donc que l'`eventId` descende jusqu'a lui. Essaye, puis abandonne : la commande portait
+une `idempotencyKey`, le cas d'usage marquait dans son propre `transactional()`, un Port
+`IdempotencyLedgerInterface` descendait dans `Application/Shared/Port/`, et un adaptateur de
+delegation y rhabillait `ProcessedEventSource::Bus`.
 
-1. **la commande porte une cle d'idempotence**, et le cas d'usage marque dans son propre
-   `transactional()`. L'Application ne pouvant dependre d'Infrastructure, le Port descend avec :
-   une interface dans `Application/Shared/Port/`, implementee par cet adaptateur ;
-2. **un cas d'usage dedie aux evenements d'integration**, qui recoit la cle et fait les deux
-   ecritures. Les cas d'usage existants restent alors inchanges.
+Ce que ca achetait, mesure sur les deux cas d'usage reels : un worker qui meurt entre le commit et
+le marquage ne rejoue pas. Or ces cas d'usage **convergent** — c'est tout l'objet de leur ecriture.
+Ce que le rejeu produit dans ce trou est donc exactement : un `findByUserAccountId()`, un `return`.
 
-> **Ne pas imbriquer deux `transactional()`.** Si le handler du bus en ouvrait un autour du dispatch
-> de la commande, le `flush()` du cas d'usage commiterait d'abord et le marquage partirait dans un
-> second commit : l'atomicite serait perdue **sans qu'aucune erreur n'apparaisse**. C'est la panne
-> exacte que ce chemin d'ecriture existe pour empecher.
+Quatre fichiers, une cle de transport dans deux commandes metier et une subtilite d'ordre
+(« marquer avant la relecture de convergence ») pour economiser **une lecture MongoDB par
+redelivrance**. Le signe qui aurait du alerter plus tot : l'adaptateur de delegation n'existait que
+pour rhabiller une valeur d'enum.
+
+Et l'option n'ouvre rien pour la suite : le jour ou ces handlers gagneront un effet non convergent,
+ce sera un e-mail ou un appel — donc un effet **externe**, que la transaction du cas d'usage ne
+couvrirait de toute facon pas. `markProcessedAndFlush()` est deja la bonne forme pour lui.
+
+**Ce qu'on accepte en echange, et qu'il faut savoir :** la fenetre « effet commite, evenement non
+marque » est fermee par la convergence seule. Rendre ces cas d'usage non convergents sans revoir ce
+choix ferait dupliquer le rejeu, et l'inbox ne l'arreterait pas. Les tests « ne fait rien quand le
+client existe deja » de la suite `appli.customer` sont ce qui monte la garde.
 
 ## Ce qui le verifie
 
@@ -221,19 +273,26 @@ ecrivant le consommateur :
 - le marquage est **commite avec l'ecriture metier** ;
 - et surtout **disparait avec elle** quand la transaction echoue — le test qui justifie le
   `persist()` ;
-- un second marquage fait echouer sa transaction et laisse la premiere ligne intacte.
+- un second marquage fait echouer sa transaction et laisse la premiere ligne intacte ;
+- **`markProcessed()` seul n'ecrit rien** — le test qui justifie l'existence de deux methodes ;
+- `markProcessedAndFlush()` engage sans transaction, **survit a un rollback ulterieur** (la
+  propriete qui impose de ne l'appeler qu'apres l'effet), et se heurte lui aussi a l'index unique
+  au second appel.
 
-Le test construit l'adaptateur a la main plutot que de le tirer du conteneur, faute d'injection
-pour l'instant. Il ne prouve que quelque chose s'il est **rejoue** : un test qui ne marquerait qu'une
-fois passerait au vert sans index unique.
+Le test construit l'adaptateur a la main plutot que de le tirer du conteneur : c'est **lui** qu'on
+verifie, pas son cablage. Il ne prouve quelque chose que s'il est **rejoue** : un test qui ne
+marquerait qu'une fois passerait au vert sans index unique.
 
 ## Points de vigilance lors d'une modification
 
-- Marquer **dans** le callback transactionnel de l'effet, jamais a cote. Deux facons de se tromper,
-  toutes deux silencieuses : une ligne engagee seule survivrait au rollback et ferait perdre
-  l'effet ; un `markProcessed()` appele sans aucun flush derriere n'ecrirait **rien du tout**.
-- Ne pas ajouter de variante hors transaction « par commodite ». Si un effet externe l'exige, elle
-  s'appelle `markProcessedAndFlush()` et arrive avec son cas d'usage et son test.
+- **Les deux facons de se tromper sont silencieuses** : une ligne engagee seule survit au rollback
+  de son effet, qui est alors perdu ; un `markProcessed()` sans flush derriere n'ecrit **rien du
+  tout**, et la deduplication cesse de dedupliquer. Ni erreur, ni log, dans aucun des deux cas.
+- Choisir le chemin d'ecriture sur une seule question : **qui detient la transaction de l'effet ?**
+  Le handler -> `markProcessed()`, dans son callback. Quelqu'un d'autre, ou personne ->
+  `markProcessedAndFlush()`, **apres** l'effet. Ne pas ajouter de troisieme variante.
+- Ne jamais ouvrir un `transactional()` autour d'un dispatch pour « rapatrier » le marquage : le
+  flush du cas d'usage commite d'abord, et l'atomicite est perdue en silence.
 - Ne pas retirer `handler` de la cle : deux reactions au meme evenement se masqueraient l'une
   l'autre.
 - Une nouvelle provenance = un nouveau cas de `ProcessedEventSource`, avec sa retention justifiee

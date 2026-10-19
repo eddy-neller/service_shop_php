@@ -7,7 +7,6 @@ namespace App\Infrastructure\Persistence\Mongo\Inbox;
 use App\Application\Shared\Port\ClockInterface;
 use App\Infrastructure\Symfony\Messenger\Event\ProcessedEventLedgerInterface;
 use App\Infrastructure\Symfony\Messenger\Event\ProcessedEventSource;
-use DateTimeImmutable;
 use Doctrine\ODM\MongoDB\DocumentManager;
 use MongoDB\Collection;
 
@@ -17,10 +16,13 @@ use MongoDB\Collection;
  * Seul endroit de l'inbox qui connaisse Doctrine, comme `DomainEventOutbox` l'est pour l'outbox :
  * les handlers ne dependent que de `ProcessedEventLedgerInterface`.
  *
- * L'ecriture passe par `persist()` et **ne flushe pas** : sa durabilite est celle de l'appelant,
- * donc, dans un callback `TransactionalInterface`, le commit de l'ecriture metier. Un `insertOne()`
- * direct n'aurait pas la session de la transaction et survivrait a son rollback, sans lever la
- * moindre erreur.
+ * `markProcessed()` passe par `persist()` et **ne flushe pas** : sa durabilite est celle de
+ * l'appelant, donc, dans un callback `TransactionalInterface`, le commit de l'ecriture metier. Un
+ * `insertOne()` direct n'aurait pas la session de la transaction et survivrait a son rollback, sans
+ * lever la moindre erreur.
+ *
+ * `markProcessedAndFlush()` engage tout de suite, pour les handlers qui ne detiennent pas la
+ * transaction de leur effet. Meme decoupage que l'outbox et son `enqueueAndFlush()`.
  *
  * La lecture, elle, passe par le pilote : c'est une simple interrogation, hors unite de travail.
  */
@@ -42,6 +44,26 @@ final readonly class ProcessedEventLedger implements ProcessedEventLedgerInterfa
 
     public function markProcessed(string $eventId, string $handler, ProcessedEventSource $source): void
     {
+        // `persist()` et non le pilote : l'ecriture rejoint l'unite de travail de l'appelant, donc
+        // son `flush(['withTransaction' => true])`. Un `insertOne()` direct n'aurait pas la session
+        // de la transaction et casserait l'atomicite sans lever la moindre erreur.
+        $this->documentManager->persist($this->newDocument($eventId, $handler, $source));
+    }
+
+    public function markProcessedAndFlush(string $eventId, string $handler, ProcessedEventSource $source): void
+    {
+        $this->markProcessed($eventId, $handler, $source);
+
+        // Appele apres un effet deja commite — ou externe, donc hors de toute transaction : la
+        // ligne doit exister des maintenant, sans quoi elle n'existerait jamais.
+        $this->documentManager->flush();
+    }
+
+    private function newDocument(
+        string $eventId,
+        string $handler,
+        ProcessedEventSource $source,
+    ): ProcessedEventDocument {
         $now = $this->clock->now();
 
         $document = new ProcessedEventDocument();
@@ -49,17 +71,9 @@ final readonly class ProcessedEventLedger implements ProcessedEventLedgerInterfa
         $document->handler = $handler;
         $document->source = $source->value;
         $document->processedAt = $now;
-        $document->expiresAt = $this->expiryOf($now, $source);
+        $document->expiresAt = $now->modify(sprintf('+%d days', $source->retentionDays()));
 
-        // `persist()` et non le pilote : l'ecriture rejoint l'unite de travail de l'appelant, donc
-        // son `flush(['withTransaction' => true])`. Un `insertOne()` direct n'aurait pas la session
-        // de la transaction et casserait l'atomicite sans lever la moindre erreur.
-        $this->documentManager->persist($document);
-    }
-
-    private function expiryOf(DateTimeImmutable $now, ProcessedEventSource $source): DateTimeImmutable
-    {
-        return $now->modify(sprintf('+%d days', $source->retentionDays()));
+        return $document;
     }
 
     private function collection(): Collection
