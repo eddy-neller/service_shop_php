@@ -173,6 +173,31 @@ code explicite est :
 
 ---
 
+## `Messenger/Event/` : deux provenances, deux branches
+
+```text
+Symfony/Messenger/Event/
+├── ProcessedEventLedgerInterface.php   ← l'inbox : partagée par les deux branches
+├── ProcessedEventSource.php            ← ses deux cases : `bus.identity` et `outbox`
+├── Domain/                             ← nos propres Domain Events, lus dans notre outbox
+│   ├── MongoDomainEventBus.php
+│   ├── PublishedDomainEventCollector.php
+│   └── Handler/
+└── Integration/                        ← ce que `service_identity` publie sur le bus
+    ├── UserIntegrationEvent.php + un type par événement du contrat
+    ├── UserIntegrationEventSerializer.php
+    └── Handler/
+```
+
+Les deux branches aboutissent sur le **même bus** (`event.bus`), par deux transports différents, et
+c'est pourquoi elles sont sœurs plutôt qu'étrangères. Ce qui est **au-dessus** d'elles est
+exactement ce qu'elles partagent : l'inbox, dont l'enum de provenance énumère les deux flux.
+
+Ne pas les fondre : un message d'intégration n'est pas un Domain Event de ce service, et le
+confondre a des conséquences silencieuses — voir la section « Événements d'intégration » plus bas.
+
+---
+
 ## Domain Events : l'outbox rejoint le flush
 
 Trois classes, trois responsabilités qu'il ne faut pas fondre :
@@ -203,6 +228,37 @@ Le transport et son stamp sont **exclus de l'autowiring** (`config/services.yaml
 scalaires viennent de la DSN, via `MongoOutboxTransportFactory`.
 
 Cycle complet, retry, idempotence : [`docs/domain_events.md`](../../docs/domain_events.md).
+
+---
+
+## Événements d'intégration : ce qui vient de l'autre service
+
+`Symfony/Messenger/Event/Integration/` porte ce que `service_identity` publie sur le bus — trois
+messages, leur sérialiseur, et les handlers qui les traduisent en commandes. C'est la branche sœur
+de `Event/Domain/`, et le nom du dossier est la seule chose qui empêche de les confondre à la
+lecture. Rien de tout cela n'appartient au
+Domain : ce sont des faits **de l'émetteur**, dans son vocabulaire, et **aucune classe n'est partagée
+entre les deux services**.
+
+| Classe | Rôle |
+|---|---|
+| `UserIntegrationEvent` + ses trois enfants | le contrat, une classe par type |
+| `UserIntegrationEventSerializer` | JSON → message, et relecture de ses propres renvois de retry |
+| `Handler/*` | `hasProcessed` → dispatch → `markProcessedAndFlush` |
+
+Trois règles, dont deux dont l'oubli ne lève rien :
+
+- **Un handler traduit, il ne décide pas.** Pas de lecture, pas de règle, et surtout **pas de
+  `transactional()`** : le cas d'usage ouvre la sienne, et une transaction englobante perdrait
+  l'atomicité en silence.
+- **Le marquage de l'inbox suit l'effet**, par `markProcessedAndFlush()` : la transaction du cas
+  d'usage est déjà validée, un `markProcessed()` sans flush derrière n'écrirait rien.
+- **Jamais `DomainEventInterface` sur un message d'intégration, jamais `sign: true` sur leurs
+  handlers.** La signature est un HMAC de `kernel.secret` ; l'émetteur ne l'a pas, et chaque message
+  serait refusé à la lecture, donc supprimé de la file.
+
+Détail, pièges du transport et vérification de bout en bout :
+[`docs/integration_events.md`](../../docs/integration_events.md).
 
 ---
 

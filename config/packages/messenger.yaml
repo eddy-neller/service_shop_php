@@ -44,5 +44,32 @@ framework:
       failed_async:
         dsn: 'mongodb-outbox://failed_async'
 
+      # Evenements d'integration recus de `service_identity`, par la file SQS `shop-user-events`.
+      # Seul transport dont le contenu vienne d'un autre service : d'ou un serialiseur dedie, qui
+      # traduit le contrat JSON et refuse ce qui ne le respecte pas.
+      #
+      # `auto_setup=false` : la file et son abonnement appartiennent a la brique `aws_local` en
+      # developpement, a l'IaC en production. Les creer ici demanderait a ce service des droits
+      # IAM de creation de file, pour une ressource qu'il ne possede pas.
+      #
+      # Le retry renvoie le message dans la file avec un `DelaySeconds` — plafonne a 900 s par
+      # SQS, et **silencieusement** : un `max_delay` plus grand ne leverait rien, il serait
+      # simplement ignore. D'ou 300 s, comme l'outbox.
+      user_events:
+        dsn: '%env(USER_EVENTS_TRANSPORT_DSN)%'
+        serializer: App\Infrastructure\Symfony\Messenger\Event\Integration\UserIntegrationEventSerializer
+        failure_transport: failed_user_events
+        retry_strategy:
+          max_retries: 6
+          delay: 10000
+          multiplier: 2
+          max_delay: 300000
+          jitter: 0.1
+
+      # La file d'echec reste locale : un message epuise appartient a ce service, pas a l'emetteur.
+      # Le renvoyer dans SQS le ferait reconsommer en boucle par n'importe quel worker.
+      failed_user_events:
+        dsn: 'mongodb-outbox://failed_user_events'
+
     routing:
       App\Domain\SharedKernel\Event\DomainEventInterface: domain_events

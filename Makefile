@@ -106,6 +106,7 @@ dc:
 .PHONY: network
 network:
 	@docker network create en_shop_php_edge 2>/dev/null || true
+	@docker network create en_shop_php_bus 2>/dev/null || true
 
 ## Crée et demarre les containers (plusieurs instances de `app`)
 ##   Surcharge du nombre d'instances : make up APP_REPLICAS=4
@@ -357,6 +358,16 @@ consume: ## Depile l'outbox des Domain Events
 .PHONY: consume-async
 consume-async: ## Depile le transport async (RabbitMQ interne)
 	@$(APP) bin/console messenger:consume async -vv
+
+## Seule cible qui s'execute dans `worker` et non dans `app` : seul le worker rejoint le reseau
+## `en_shop_php_bus`, donc seul lui resout `aws-local`. Depuis `app`, la commande echouerait sur
+## « Could not resolve host ». `$(DOCKER) exec` est ecrit en clair ici plutot que par une macro,
+## pour qu'un `makefile.conf` plus ancien ne la laisse pas vide — la commande tournerait alors sur
+## l'hote. Brique `aws_local` demarree requise : ce service demarre seul, mais ne consomme pas un
+## bus absent.
+.PHONY: consume-user-events
+consume-user-events: ## Depile les evenements d'integration recus de service_identity (SQS)
+	@$(DOCKER) exec worker bin/console messenger:consume user_events -vv
 
 ## Les index ne sont pas crees par une migration : ils sont declares dans le mapping
 ## des documents et poses par cette commande. Sans elle, l'unicite des titres n'est

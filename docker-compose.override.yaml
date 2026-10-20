@@ -27,6 +27,18 @@ services:
       target: dev
     volumes:
       - ./:/var/www:rw
+    # Le worker est le **seul** service de cette stack a rejoindre le bus : c'est lui qui consomme
+    # la file SQS des evenements d'integration. Ni `app`, ni `nginx`, ni les bases n'ont de raison
+    # d'y acceder, et les y attacher donnerait a LocalStack un chemin vers eux.
+    #
+    # `default` est liste explicitement : declarer `networks:` sur un service **remplace** son
+    # rattachement implicite, et l'oublier couperait le worker de MongoDB et de RabbitMQ.
+    #
+    # En developpement seulement, comme le reste de ce fichier : en production, le bus est AWS, que
+    # le worker joint par son egress normal — il n'y a pas de reseau Docker a rejoindre.
+    networks:
+      default: {}
+      bus: {}
 
   nginx:
     ports:
@@ -62,3 +74,11 @@ networks:
   edge:
     external: true
     name: en_shop_php_edge
+
+  # Reseau du bus inter-services, distinct de `edge` : `edge` porte le trafic HTTP nord-sud (Kong
+  # vers nginx), `bus` relie les workers a l'API AWS. Les confondre donnerait a Kong un chemin vers
+  # les workers. Cree par `make network`, comme `edge`, pour que la stack demarre sans dependre de
+  # la brique `aws_local`.
+  bus:
+    external: true
+    name: en_shop_php_bus

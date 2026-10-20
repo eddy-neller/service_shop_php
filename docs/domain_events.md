@@ -9,6 +9,11 @@ Pour la mécanique CQRS elle-même (bus de commandes/requêtes, middlewares, ada
 [`CQRS_messenger.md`](CQRS_messenger.md). Pour la déduplication côté réception, voir
 [`src/Infrastructure/Persistence/Mongo/Inbox/Inbox.md`](src/Infrastructure/Persistence/Mongo/Inbox/Inbox.md).
 
+**Ce document ne parle que des événements de ce service.** Ceux que `service_identity` publie sur le
+bus inter-services n'en sont pas : ils arrivent par une file SQS, portent le vocabulaire de
+l'émetteur, et sont traduits en commandes à la frontière —
+[`integration_events.md`](integration_events.md).
+
 ---
 
 ## L'idée, en clair

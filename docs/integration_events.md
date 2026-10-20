@@ -1,0 +1,160 @@
+# Événements d'intégration : ce que le shop reçoit de `service_identity`
+
+> Côté réception uniquement. Les Domain Events **de** ce service, son outbox et son worker :
+> [`domain_events.md`](domain_events.md). La déduplication :
+> [`src/Infrastructure/Persistence/Mongo/Inbox/Inbox.md`](src/Infrastructure/Persistence/Mongo/Inbox/Inbox.md).
+> Les options du transport, ligne par ligne :
+> [`config/packages/messenger.md`](config/packages/messenger.md).
+>
+> Sources : [`src/Infrastructure/Symfony/Messenger/Event/Integration/`](../src/Infrastructure/Symfony/Messenger/Event/Integration/).
+
+## Le trou que ça rebranche
+
+Depuis le jalon 3, un compte créé dans `service_identity` n'avait **plus de client** ici : le
+provisionnement passait par un port dont l'unique adaptateur journalisait. Ce document décrit la
+moitié **consommateur** de son remplacement. L'autre moitié — la publication SNS côté émetteur —
+n'existe pas encore : rien n'arrive donc dans la file en dehors d'une publication à la main.
+
+## Le contrat, version 1
+
+```json
+{ "id": "<uuid>", "type": "identity.user.registered", "version": 1,
+  "occurredAt": "2026-09-15T12:00:00+00:00", "data": { "userAccountId": "<uuid>" } }
+```
+
+| Type | Réaction ici |
+|---|---|
+| `identity.user.registered` | provisionner le client du compte |
+| `identity.user.created_by_admin` | la même — le shop a besoin du même client |
+| `identity.user.deleted` | désactiver le client, ou poser une pierre tombale |
+
+**Aucune donnée personnelle n'y circule** : seul l'identifiant du compte. Le shop ne connaît ni
+l'e-mail ni le nom — il n'en a pas besoin, et un bus est un endroit durable.
+
+`id` est frappé par l'émetteur et reste identique à chaque redélivrance : c'est la clé de
+déduplication de l'inbox. Le régénérer à la réception ferait passer chaque doublon pour un fait
+nouveau.
+
+Le contrat n'est écrit nulle part en PHP — **aucune classe n'est partagée entre les deux services**.
+Il est décrit par la documentation de l'émetteur, et tenu ici par les fixtures JSON de
+`UserIntegrationEventSerializerTest`. Si l'émetteur le change, c'est là que ça casse.
+
+## Le chemin complet d'un message
+
+```text
+service_identity
+      │ publie (SNS, topic identity-user-events)
+      ▼
+   SNS ──▶ SQS shop-user-events          RawMessageDelivery : le corps arrive tel quel
+      │
+      ▼  worker : messenger:consume user_events
+UserIntegrationEventSerializer           contrat JSON ──▶ message + BusNameStamp('event.bus')
+      │
+      ▼  event.bus
+ProvisionCustomerOnUserCreatedHandler    hasProcessed ? ──▶ dispatch ──▶ markProcessedAndFlush
+      │
+      ▼  command.bus
+ProvisionCustomerForAccountCommandHandler   transactional : client + Domain Events (outbox)
+```
+
+Deux propriétés portent tout le reste, et aucune ne se voit à la lecture du résultat.
+
+### 1. Le handler traduit, il ne décide pas
+
+Il transforme un fait de l'émetteur en commande de ce service, et rien d'autre : pas de lecture, pas
+de règle, **pas de transaction**. Les cas d'usage sont déjà écrits pour être **commutatifs et
+idempotents** — un client déjà rattaché arrête le provisionnement, et une suppression arrivée avant
+la création pose une pierre tombale que le provisionnement tardif respecte.
+
+> **Ne jamais ouvrir un `transactional()` autour du dispatch.** Le cas d'usage ouvre et valide la
+> sienne ; une transaction englobante verrait son `flush()` commiter d'abord, et l'atomicité serait
+> perdue **sans qu'aucune erreur n'apparaisse**.
+
+### 2. L'inbox est marquée après l'effet
+
+La transaction appartenant au cas d'usage, le handler ne peut pas y entrer son marquage : il utilise
+donc `markProcessedAndFlush()`, **après** le dispatch. La garantie est l'au-moins-une-fois
+dédoublonné — une panne entre le commit et le marquage fait rejouer la commande, que sa convergence
+rend inoffensive. L'ordre inverse échangerait ce doublon contre une perte définitive.
+
+C'est aussi pourquoi la convergence des cas d'usage n'est pas un luxe : les rendre non convergents
+sans revoir ce choix ferait dupliquer un rejeu, et l'inbox ne l'arrêterait pas.
+
+## Trois issues au décodage, et une seule lève
+
+| Entrée | Issue | Trace |
+|---|---|---|
+| Type connu, version 1 | message d'intégration, handler dédié | logs du worker |
+| Type inconnu, ou version > 1 | `UnsupportedIntegrationEvent` → **journalisé puis acquitté** | `warning` applicatif |
+| JSON invalide, champ manquant ou mal typé | `MessageDecodingFailedException` | l'exception seule |
+
+Le deuxième cas est ce qui rend un topic SNS utilisable : l'émetteur peut publier un type de plus, ou
+une version de plus, sans attendre le déploiement de ses abonnés. Échouer là-dessus remplirait la
+file d'échec à chaque événement qui ne nous concerne pas.
+
+> **Ce que fait réellement un refus de décodage** — vérifié, et contre-intuitif :
+> `AmazonSqsReceiver` attrape l'exception, **supprime le message de la file**, puis la relance ; le
+> worker s'arrête alors, `Worker::run()` ne protégeant pas `$receiver->get()`. Le message ne part
+> **ni** en file d'échec (elle ne reçoit que les échecs de handler) **ni** en DLQ (la redélivrance
+> n'a pas lieu, il est déjà supprimé). D'où le corps tronqué que l'exception transporte : c'est la
+> seule trace qui reste.
+
+Un échec **de handler** — MongoDB indisponible, conflit de verrou — suit le chemin normal : retry
+différé de 10 s à 5 min, puis `failed_user_events`, dans la base de ce service.
+
+## Deux pièges du transport, payés d'avance
+
+- **Ne jamais faire implémenter `DomainEventInterface` à un message d'intégration.** Ce ne sont pas
+  des événements de ce domaine, et la conséquence serait silencieuse mais totale :
+  `LogDomainEventHandler` déclare `sign: true`, donc Messenger exige une signature HMAC de
+  `kernel.secret` pour tout message de ce type. `service_identity` n'a pas notre `APP_SECRET` —
+  chaque message serait refusé à la lecture, donc supprimé de la file. Pour la même raison, **pas de
+  `sign: true` sur les handlers d'intégration**.
+- **`encode()` délègue au sérialiseur standard**, parce que c'est lui qui écrit les renvois de retry.
+  Les stamps voyagent alors dans les en-têtes, dont le `RedeliveryStamp` qui porte le compte
+  d'essais : le perdre rendrait chaque redélivrance indistinguable d'une première livraison, donc le
+  retry infini. `decode()` reconnaît ces renvois à l'en-tête `type`, qui porte un **nom de classe** —
+  là où un message venu de SNS porte au mieux l'attribut `type` du contrat. D'où la discrimination
+  par `class_exists()`, et non par simple présence.
+
+## Exploitation
+
+```bash
+make consume-user-events                 # dépiler à la main (brique `aws_local` démarrée requise)
+docker compose exec worker bin/console messenger:stats          # depuis `worker`, pas `app`
+docker compose exec app bin/console messenger:failed:show --transport=failed_user_events
+```
+
+**`messenger:stats` sans argument échoue depuis `app`** : seul le `worker` rejoint le réseau du bus,
+donc seul lui peut joindre SQS. C'est le cloisonnement qui fonctionne, pas une panne — lancer la
+commande depuis `worker`, ou lui passer les transports locaux.
+
+**Brique éteinte**, le programme Supervisor `messenger-consume-user-events` échoue à résoudre
+`aws-local` et redémarre en boucle (`exit status 1`), jusqu'à épuiser ses essais et passer `FATAL`.
+Le service, lui, continue de répondre — `/health` et l'API restent en 200. Rallumer la brique suffit
+si le budget d'essais n'est pas épuisé ; sinon, `docker compose restart worker`.
+
+## Vérification de bout en bout
+
+Les deux stacks démarrées (`aws_local` puis `service_shop`) :
+
+```bash
+# 1. Un compte naît : le client apparaît sans intervention
+ACCOUNT=$(cat /proc/sys/kernel/random/uuid)
+cd ../aws_local && make aws c="sns publish \
+  --topic-arn arn:aws:sns:eu-west-3:000000000000:identity-user-events \
+  --message '{\"id\":\"$(cat /proc/sys/kernel/random/uuid)\",\"type\":\"identity.user.registered\",\"version\":1,\"occurredAt\":\"2026-10-14T00:00:00+00:00\",\"data\":{\"userAccountId\":\"'$ACCOUNT'\"}}'"
+cd ../service_shop && make bash-db
+> db.customer.findOne({userAccountId: "<ACCOUNT>"})        # status 1 (actif)
+> db.processed_event.findOne({})                           # source "bus.identity", expire a 30 j
+
+# 2. Redélivrance du MÊME `id` : acquittée sans « Dispatching command » dans les logs
+# 3. Commutativité : publier `deleted` puis `registered` pour un compte jamais provisionné
+#    -> un seul client, `status` 2 (desactive), `version` 1 — la pierre tombale n'est pas ressuscitee
+# 4. Type inconnu (`identity.user.renamed`) -> WARNING « Unsupported integration event acknowledged »
+# 5. Corps invalide (`{"id": "casse`) -> worker en `exit status 1`, file et DLQ a zero (make queues)
+# 6. Isolation : `make down` sur la brique -> `/health` 200, worker `user_events` en crash-loop
+```
+
+Ces six scénarios ont tous été exécutés. Le point 5 est celui qui surprend : la file **et** la DLQ
+retombent à zéro, parce que le message a été supprimé au décodage.

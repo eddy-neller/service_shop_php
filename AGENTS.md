@@ -192,6 +192,8 @@ ODM `ReferenceOne` stockee comme identifiant ; il n'existe pas de second champ `
 ## Domain Events : un outbox qui doit rejoindre le flush
 
 > Cycle de vie complet — evenements, transport, worker, idempotence : [`docs/domain_events.md`](docs/domain_events.md).
+> Ce que ce service **recoit** de `service_identity` par le bus, et comment il le traduit :
+> [`docs/integration_events.md`](docs/integration_events.md).
 > Deduplication a la reception, et pourquoi un message arrive deux fois :
 > [`docs/src/Infrastructure/Persistence/Mongo/Inbox/Inbox.md`](docs/src/Infrastructure/Persistence/Mongo/Inbox/Inbox.md).
 > Cache de lecture et invalidation : [`docs/query_cache.md`](docs/query_cache.md).
@@ -273,17 +275,38 @@ front ──> gateway Kong :20800 ──> varnish (alias `service-shop`) ──>
 En developpement (`make up`), l'entree `service-shop` et le port local 20910 visent directement
 nginx afin que le profiler Symfony decrive chaque requete.
 
+### Le worker, et lui seul, rejoint le bus
+
+```text
+worker ──> reseau `en_shop_php_bus` ──> aws_local : LocalStack (SNS + SQS)
+           (dev uniquement)             — en production, AWS, joint par l'egress normal
+```
+
+C'est lui qui consomme la file `shop-user-events` ([`docs/integration_events.md`](docs/integration_events.md)).
+Ni `app`, ni `nginx`, ni les bases n'ont de raison d'y acceder, et les y attacher donnerait a
+LocalStack un chemin vers eux. Le rattachement vit dans l'**override** : en production il n'y a pas
+de reseau Docker a rejoindre.
+
+Deux consequences a connaitre :
+
+- **`networks:` declare sur un service remplace son rattachement implicite.** `default` est donc
+  liste explicitement a cote de `bus`, faute de quoi le worker perdrait MongoDB et RabbitMQ.
+- **`messenger:stats` sans argument echoue depuis `app`**, qui ne peut pas joindre SQS. C'est le
+  cloisonnement qui fonctionne : lancer la commande depuis `worker`, ou lui passer les transports
+  locaux.
+
 ### « Le service demarre seul » tient toujours, mais il faut savoir pourquoi
 
 `docker-compose.override.yaml` declare un reseau **`external`** : absent, `docker compose up`
 **echoue**. Pris tel quel, cela ferait dependre le demarrage de ce service du dépot de la passerelle
 — exactement ce que ce fichier interdit depuis le jalon 1.
 
-Ce n'est pas le cas parce que **`make network` cree le reseau lui-meme** (`docker network create …
-|| true`, idempotent), et que `make up` en depend. Creer un reseau ne suppose aucune autre stack
-demarree : `make up` puis `curl localhost:20910/health` fonctionne toujours passerelle eteinte, y
-compris apres un `docker network rm`. **Ne pas deplacer cette creation dans le depot de la
-passerelle.**
+Ce n'est pas le cas parce que **`make network` cree les reseaux lui-meme** (`docker network create …
+|| true`, idempotent), et que `make up` en depend. Il y en a deux : `en_shop_php_edge` pour la
+passerelle, `en_shop_php_bus` pour le worker. Creer un reseau ne suppose aucune autre stack
+demarree : `make up` puis `curl localhost:20910/health` fonctionne toujours passerelle **et** brique
+`aws_local` eteintes, y compris apres un `docker network rm`. **Ne pas deplacer cette creation dans
+le depot de la passerelle ni dans celui de la brique.**
 
 Le cloisonnement, lui, est renforce et non affaibli : en **production**, seul `varnish` rejoint
 `en_shop_php_edge`; en **developpement**, l'override y attache directement `nginx` pour conserver un
@@ -389,6 +412,16 @@ interprete comme un nom d'hote et `nginx -t` echoue.
   `persist()`, jamais `insertOne()`, et le `send()` du transport ne sert qu'aux chemins de reprise.
   `DomainEventOutboxTest` est ce qui s'en apercevrait — remplacer le `persist()` par une ecriture
   directe fait passer au rouge ses deux cas de rollback, et rien d'autre.
+- **Un message d'integration ne doit jamais implementer `DomainEventInterface`.** Ce ne sont pas des
+  evenements de ce domaine, et la consequence serait silencieuse mais totale :
+  `LogDomainEventHandler` declare `sign: true`, donc Messenger exige une signature HMAC de
+  `kernel.secret` pour tout message de ce type. `service_identity` n'a pas notre `APP_SECRET` —
+  chaque message serait refuse a la lecture, **donc supprime de la file**. Meme raison pour ne pas
+  mettre `sign: true` sur les handlers d'integration.
+- **Un corps qui viole le contrat n'est ni rejoue, ni mis en file d'echec, ni envoye en DLQ.**
+  `AmazonSqsReceiver` attrape l'exception de decodage, **supprime le message**, puis la relance — et
+  le worker s'arrete, `Worker::run()` ne protegeant pas `$receiver->get()`. La seule trace est
+  l'exception, d'ou le corps tronque qu'elle transporte. Verifie : file et DLQ retombent a zero.
 - **Le cache des queries et son invalidation sont indissociables.** `QueryCacheMiddleware` seul
   servirait des lectures perimees des la premiere ecriture. Les deux ont ete branches ensemble, et
   ne doivent jamais etre desactives separement.
@@ -439,6 +472,8 @@ interprete comme un nom d'hote et `nginx -t` echoue.
 ## Commandes
 
 Tout s'execute dans le conteneur `app` — ne jamais lancer `composer` ou `bin/console` sur l'hote.
+Une seule exception : `make consume-user-events` passe par `worker`, seul conteneur a rejoindre le
+reseau du bus, donc seul a resoudre `aws-local`.
 
 Pour synchroniser le depot apres un commit, executer `git ps && git f` : `ps` pousse la branche
 courante vers GitLab, seul depot distant, et `f` recupere les references distantes en supprimant
@@ -461,6 +496,7 @@ make bash-db          # shell mongosh
 make db-index         # (re)pose les index declares dans le mapping ODM
 make consume          # depile l'outbox a la main (Supervisor le fait deja en conteneur)
 make consume-async    # depile le transport async (RabbitMQ interne)
+make consume-user-events # idem pour les evenements d'integration recus par SQS — s'execute dans `worker`
 make fixtures         # catalogue de dev : 30 categories, 1000 produits (PURGE la base)
 make jwt-public-key   # recopie la cle publique de l'emetteur
 make jwt-test-keys    # regenere la paire de test
@@ -604,14 +640,17 @@ C=$(reads); echo "miss=$((B-A)) hit=$((C-B))"   # miss > 0, hit = 0
 
 - **Jalon 3, etape A — fait.** `Customer` et `Cart` sont ici, adresses embarquees, verrou optimiste,
   Domain Events.
-- **Jalon 3, etape B — a faire, et c'est le trou du moment.** **Plus rien ne cree de client
-  automatiquement.** Cote `service_identity`, `ProvisionCustomerHandler` et `DisableCustomerHandler`
-  reagissent toujours aux evenements `User`, mais derriere `ShopCustomerClientInterface`, dont
-  l'unique adaptateur journalise sans rien faire. Un compte cree aujourd'hui n'a de client ici que
-  si un admin appelle `POST /api/shop/customers`.
-  Reste a choisir le protocole inter-services (HTTP, gRPC, message) et a ecrire l'adaptateur — plus,
-  cote ce service, `ROLE_SERVICE` hors `role_hierarchy`, la securite de `ShopCustomer` au niveau
-  operation, et un endpoint de desactivation clee sur `userAccountId`.
+- **Jalon 3, etape B — moitie consommateur faite.** Le protocole est tranche : **chorégraphie par
+  evenements**, topic SNS chez l'emetteur, file SQS par consommateur. Ce service consomme,
+  deduplique et provisionne ([`docs/integration_events.md`](docs/integration_events.md)) ; ses deux
+  cas d'usage sont commutatifs, donc l'ordre des messages lui est indifferent.
+  **Il manque l'emetteur** : `service_identity` reagit toujours a ses evenements `User` derriere
+  `ShopCustomerClientInterface`, dont l'unique adaptateur journalise. Rien n'arrive donc dans la
+  file en dehors d'une publication a la main, et un compte cree n'a de client ici que si un admin
+  appelle `POST /api/shop/customers`.
+  Restent aussi, de cote : `ROLE_SERVICE` hors `role_hierarchy` — dont le bus a peut-etre supprime
+  le besoin, plus aucun appel HTTP ne venant de l'autre service — la securite de `ShopCustomer` au
+  niveau operation, et un endpoint de desactivation clee sur `userAccountId`.
 
 ---
 
@@ -639,5 +678,10 @@ C=$(reads); echo "miss=$((B-A)) hit=$((C-B))"   # miss > 0, hit = 0
 - [ ] Aucun `container_name` sur `app`, `worker` ou `nginx` — ils doivent rester replicables.
 - [ ] `app` et `worker` partagent la meme image (ancre `&app_image`), jamais deux Dockerfile.
 - [ ] En dev, `nginx` joint `en_shop_php_edge` sous l'alias `service-shop`; en prod, c'est `varnish`.
+- [ ] Seul `worker` rejoint `en_shop_php_bus`, et il liste `default` a cote.
+- [ ] Aucun message d'integration n'implemente `DomainEventInterface`, aucun de leurs handlers ne
+      declare `sign: true`.
+- [ ] Aucune suite ne depend de la brique `aws_local` : `USER_EVENTS_TRANSPORT_DSN=in-memory://` en
+      test.
 - [ ] `make up` fonctionne sans que la passerelle ait jamais tourne.
 - [ ] `declare(strict_types=1);` dans tout nouveau fichier PHP.
