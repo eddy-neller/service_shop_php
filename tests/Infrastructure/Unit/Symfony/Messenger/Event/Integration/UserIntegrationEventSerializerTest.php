@@ -20,8 +20,17 @@ use Symfony\Component\Messenger\Transport\Serialization\Serializer;
 /**
  * Fixtures du contrat publie par `service_identity`, cote consommateur.
  *
- * Ce test est le seul endroit du depot ou le contrat est ecrit en JSON : si l'emetteur le change,
- * c'est ici que ca doit casser, et non dans un handler ou, pire, nulle part.
+ * Ce test est le seul endroit du depot ou le contrat est ecrit en JSON. C'est donc ici que se
+ * constate une divergence avec l'emetteur — et non dans un handler ou, pire, nulle part.
+ *
+ * > **Ce qu'il ne fait pas, malgre les apparences.** Il ne verifie rien de l'emetteur : les deux
+ * > depots sont separes, et `service_identity` decrit le meme contrat de son cote dans
+ * > `UserIntegrationEventTest`. Changer sa forme en mettant a jour son propre test laisse les deux
+ * > suites vertes ; seule la verification de bout en bout attrape la rupture. Un vrai test
+ * > *consumer-driven* — ces fixtures publiees, verifiees par la CI du producteur — reste a ecrire.
+ *
+ * Ce que ce test tient, en revanche, c'est la **tolerance** du lecteur : ce qu'il accepte sans
+ * broncher borne ce que l'emetteur peut changer sans coordonner un deploiement.
  */
 final class UserIntegrationEventSerializerTest extends TestCase
 {
@@ -98,6 +107,29 @@ final class UserIntegrationEventSerializerTest extends TestCase
         $message = $envelope->getMessage();
         self::assertInstanceOf(UnsupportedIntegrationEvent::class, $message);
         self::assertSame(2, $message->version);
+    }
+
+    /**
+     * **La retrocompatibilite ascendante, celle qui permet a l'emetteur d'avancer seul.** Un champ
+     * ajoute au contrat ne doit rien casser ici : le serialiseur ne lit que les cles qu'il connait.
+     *
+     * C'est ce qui rend l'ajout d'un champ **non versionnant** cote emetteur. Durcir ce lecteur —
+     * valider le schema, refuser une cle inconnue — retirerait cette propriete sans qu'aucun autre
+     * test ne rougisse, et imposerait desormais de deployer les deux services ensemble.
+     */
+    public function testItIgnoresFieldsItDoesNotKnow(): void
+    {
+        $envelope = $this->serializer->decode(['body' => self::contract([
+            'correlationId' => '018f3a40-0000-7000-8000-00000000beef',
+            'data' => [
+                'userAccountId' => self::ACCOUNT_ID,
+                'locale' => 'fr_FR',
+            ],
+        ])]);
+
+        $message = $envelope->getMessage();
+        self::assertInstanceOf(UserRegisteredIntegrationEvent::class, $message);
+        self::assertSame(self::ACCOUNT_ID, $message->userAccountId);
     }
 
     #[DataProvider('brokenBodies')]

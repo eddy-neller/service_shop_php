@@ -37,7 +37,30 @@ nouveau.
 
 Le contrat n'est écrit nulle part en PHP — **aucune classe n'est partagée entre les deux services**.
 Il est décrit par la documentation de l'émetteur, et tenu ici par les fixtures JSON de
-`UserIntegrationEventSerializerTest`. Si l'émetteur le change, c'est là que ça casse.
+`UserIntegrationEventSerializerTest`.
+
+## Ce que ce service garantit à l'émetteur
+
+Trois tolérances, et ce sont elles qui permettent à `service_identity` de déployer **sans nous
+prévenir**. Les durcir, c'est reprendre cette liberté :
+
+| L'émetteur fait… | Ce service… | Testé par |
+|---|---|---|
+| ajoute un champ au contrat | **l'ignore** et traite l'événement | `testItIgnoresFieldsItDoesNotKnow` |
+| publie un type de plus | journalise un `warning` et **acquitte** | `testItTurnsAnUnknownTypeIntoAnAcknowledgedMessage` |
+| passe en `version: 2` | journalise et **acquitte**, sans rien deviner | `testItTurnsALaterContractVersionIntoAnAcknowledgedMessage` |
+
+Corollaire côté émetteur, écrit dans son `UserIntegrationEvent` : **un ajout de champ n'incrémente
+pas `version`.** L'incrémenter nous ferait acquitter sans agir — le provisionnement s'arrêterait en
+silence. `version` est réservée à ce qui casse un lecteur existant, et dans ce cas les consommateurs
+se livrent d'abord.
+
+> **Ce que rien ne vérifie.** L'émetteur décrit le même contrat de son côté, dans
+> `UserIntegrationEventTest`. **Aucun test ne compare les deux rives** : les dépôts sont séparés, et
+> changer la forme en mettant à jour le test de l'autre dépôt laisse les deux suites vertes. Seule
+> la vérification de bout en bout, plus bas, attrape la rupture. Un vrai test *consumer-driven* —
+> ces fixtures publiées, vérifiées par la CI du producteur — reste à écrire, et le deviendra
+> nécessaire au deuxième consommateur.
 
 ## Le chemin complet d'un message
 
