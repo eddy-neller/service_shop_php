@@ -37,11 +37,12 @@
 /.phpcs-cache
 
 # --- Cles ---
-# Seule la paire de TEST sort : elle est versionnee volontairement (cf. AGENTS.md)
-# et ne sert qu'a la suite de tests, qui tourne sur le code monte depuis l'hote.
-# `config/jwt/public.pem` DOIT rester : sans elle le service ne peut valider aucun
-# token, et l'image ne sert a rien.
-/config/jwt/test/
+# Aucune cle dans l'image. Celle de l'emetteur est une donnee du deploiement, montee au
+# demarrage (`docker-compose.prod.yaml`, demain un Secret Kubernetes) : embarquee, chaque
+# changement de cle exigerait de reconstruire l'image. Le dossier entier est exclu, pas seulement
+# `public.pem` — une cle privee posee la par erreur ne doit pouvoir atteindre aucun artefact.
+# La paire de TEST n'en a pas besoin non plus : la suite tourne sur le code monte depuis l'hote.
+/config/jwt/
 
 # --- Documentation et configuration locale ---
 /docs/

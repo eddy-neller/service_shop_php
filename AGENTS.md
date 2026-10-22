@@ -55,8 +55,10 @@ Avant de proposer une revocation immediate ici, relire ce paragraphe.
 ## Regles sur les cles
 
 - `config/jwt/public.pem` — cle **publique** de l'emetteur, recopiee par `make jwt-public-key`
-  depuis `JWT_ISSUER_PUBLIC_KEY` (`makefile.conf`). Non versionnee. Le Makefile versionne ne
-  connait pas l'emplacement de `service_identity` : c'est une donnee du poste.
+  depuis `JWT_ISSUER_PUBLIC_KEY` (`makefile.conf`). Non versionnee, et **jamais dans l'image** :
+  `.dockerignore` exclut tout `config/jwt/`, et `docker-compose.prod.yaml` la monte au demarrage
+  en secret (`/run/secrets/jwt_public_key`) — demain un Secret Kubernetes. Le Makefile versionne
+  ne connait pas l'emplacement de `service_identity` : c'est une donnee du poste.
 - **Ne jamais copier `private.pem` ni `JWT_PASSPHRASE` dans ce depot.** Un service qui valide ne doit
   pas pouvoir emettre.
 - `config/jwt/test/` — paire dediee aux tests, **versionnee volontairement** : elle ne protege rien
@@ -361,10 +363,13 @@ pas y toucher** : `make ci-image` (qui tire la base avec `--pull`), verifier la 
 l'image, puis `make ci-image-push`. Vecu le 22/10/2026 sur `service_identity` : image en 8.4.25,
 8.4.27 exigee. L'image `prod` est dans le meme cas : la reconstruire avec `--pull`.
 
-Deux exclusions du `.dockerignore` sont volontairement **absentes**, et doivent le rester :
-`public/bundles/` (les assets de l'UI d'API Platform — exclus, `/api/docs` rend des 404 en prod) et
-`config/jwt/public.pem` (sans lui le service ne peut valider aucun token). Seul `config/jwt/test/`
-est exclu.
+Une exclusion du `.dockerignore` est volontairement **absente**, et doit le rester :
+`public/bundles/` (les assets de l'UI d'API Platform — exclus, `/api/docs` rend des 404 en prod).
+`config/jwt/`, a l'inverse, est exclu **en entier** : la cle de l'emetteur arrive au demarrage
+(voir « Regles sur les cles »), et une cle privee posee la par erreur ne peut atteindre aucune image.
+Une image lancee sans cle montee refuse donc tous les tokens — c'est voulu, la cle est une donnee
+du deploiement. `docker compose config` ne le detecte pas : c'est la creation du conteneur qui
+echoue, sur « bind source path does not exist ».
 
 ### Ni `container_name`, ni `fastcgi_pass` en dur sur `app` et `nginx`
 
@@ -696,7 +701,7 @@ C=$(reads); echo "miss=$((B-A)) hit=$((C-B))"   # miss > 0, hit = 0
 - [ ] Toute suite declaree dans un `phpunit.xml` local existe aussi dans `phpunit.dist.xml`.
 - [ ] Aucun reglage de developpement (port publie, bind mount, Xdebug) dans `docker-compose.yaml`.
 - [ ] Ni Xdebug ni Composer dans l'etape `prod` du Dockerfile.
-- [ ] `public/bundles/` et `config/jwt/public.pem` ne sont **pas** exclus par `.dockerignore`.
+- [ ] `public/bundles/` n'est **pas** exclu par `.dockerignore` ; `config/jwt/` l'est, en entier.
 - [ ] Aucun `container_name` sur `app`, `worker` ou `nginx` — ils doivent rester replicables.
 - [ ] `app` et `worker` partagent la meme image (ancre `&app_image`), jamais deux Dockerfile.
 - [ ] En dev, `nginx` joint `en_shop_php_edge` sous l'alias `service-shop`; en prod, c'est `varnish`.

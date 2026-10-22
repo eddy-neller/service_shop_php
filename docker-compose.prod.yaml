@@ -1,10 +1,35 @@
 services:
+  # La cle publique de l'emetteur arrive au DEMARRAGE, jamais au build : l'image ne l'embarque plus
+  # (`.dockerignore`). En changer demande de recreer `app` et `worker`, pas de reconstruire l'image.
+  # Ce montage disparaitra avec JWKS, ou le service lira lui-meme les cles de l'emetteur
+  # (`../ARCHITECTURE.md`).
+  #
+  # C'est un secret Compose, monte en lecture seule sous /run/secrets : la forme qu'aura un Secret
+  # Kubernetes monte en fichier. Une source absente fait echouer la creation des conteneurs, au
+  # lieu de livrer un service qui refuserait tous les tokens.
+  #
+  # `environment` se fusionne cle par cle avec celui de `docker-compose.yaml` : seule la variable de
+  # la cle est ajoutee ici, `SUPERVISOR_ROLE` et le reste restent ceux du fichier de base.
+  app:
+    environment: &jwt_environment
+      JWT_PUBLIC_KEY: /run/secrets/jwt_public_key
+    secrets: &jwt_secrets
+      - jwt_public_key
+
+  worker:
+    environment: *jwt_environment
+    secrets: *jwt_secrets
+
   varnish:
     networks:
       default: {}
       edge:
         aliases:
           - service-shop
+
+secrets:
+  jwt_public_key:
+    file: ${JWT_PUBLIC_KEY_FILE:-./config/jwt/public.pem}
 
 networks:
   edge:
