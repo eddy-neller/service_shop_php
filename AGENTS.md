@@ -54,11 +54,17 @@ Avant de proposer une revocation immediate ici, relire ce paragraphe.
 
 ## Regles sur les cles
 
+> Fonctionnement complet de l'authentification cote shop — chemin d'une requete, contrat du token,
+> cles, revocation, tests : [`docs/JWT_authentication.md`](docs/JWT_authentication.md).
+
 - `config/jwt/public.pem` — cle **publique** de l'emetteur, recopiee par `make jwt-public-key`
   depuis `JWT_ISSUER_PUBLIC_KEY` (`makefile.conf`). Non versionnee, et **jamais dans l'image** :
   `.dockerignore` exclut tout `config/jwt/`, et `docker-compose.prod.yaml` la monte au demarrage
   en secret (`/run/secrets/jwt_public_key`) — demain un Secret Kubernetes. Le Makefile versionne
   ne connait pas l'emplacement de `service_identity` : c'est une donnee du poste.
+  **Cette copie est provisoire** : la cible est **JWKS**, ou ce service lit lui-meme les cles de
+  l'emetteur (`../ARCHITECTURE.md`). Ne pas reinvestir dans la copie — seconde cle de confiance,
+  procedure de rotation manuelle : tout chantier de rotation passe par JWKS.
 - **Ne jamais copier `private.pem` ni `JWT_PASSPHRASE` dans ce depot.** Un service qui valide ne doit
   pas pouvoir emettre.
 - `config/jwt/test/` — paire dediee aux tests, **versionnee volontairement** : elle ne protege rien
