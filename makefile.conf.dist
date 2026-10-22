@@ -9,3 +9,8 @@ APP = $(DOCKER) exec app
 
 # Nombre d'instances HTTP du service `app` lancees par `make up`.
 APP_REPLICAS = 3
+
+# Cle PUBLIQUE de l'emetteur sur ce poste, recopiee par `make jwt-public-key`.
+# C'est une donnee du poste : le Makefile versionne ne connait pas l'emplacement de
+# `service_identity`. Ne jamais pointer vers private.pem — la cible le refuse.
+JWT_ISSUER_PUBLIC_KEY = ../service_identity/config/jwt/public.pem

@@ -11,7 +11,7 @@ depuis **sa propre base MongoDB**.
 ```bash
 cp makefile.conf.dist makefile.conf
 cp .env.dist .env            # renseigner APP_SECRET
-make jwt-public-key          # copie la cle publique de l'emetteur
+make jwt-public-key          # copie la cle publique de l'emetteur (JWT_ISSUER_PUBLIC_KEY)
 make install                 # build + up + vendors + cles de test + index Mongo
 make fixtures                # catalogue de dev : 30 categories, 1000 produits
 ```

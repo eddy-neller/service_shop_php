@@ -398,8 +398,15 @@ jwt-test-keys: ## (Re)genere config/jwt/test/{private,public}.pem
 		chown -R --reference=config/jwt config/jwt/test"
 	@echo "$(GREEN)** Paire de test generee **$(RESET)"
 
-## Copie la cle PUBLIQUE de l'emetteur depuis service_identity
+## Recopie la cle PUBLIQUE de l'emetteur depuis `JWT_ISSUER_PUBLIC_KEY` (makefile.conf).
+## Son emplacement est une donnee du poste, pas de ce depot : rien de versionne ici ne suppose ou
+## vit `service_identity`. Refuse une source absente, et toute source contenant une cle PRIVEE —
+## ce service valide, il ne doit jamais pouvoir emettre.
 .PHONY: jwt-public-key
-jwt-public-key: ## Copie la cle publique de service_identity (jamais la cle privee)
-	@cp ../service_identity/config/jwt/public.pem config/jwt/public.pem
+jwt-public-key: ## Recopie la cle publique de l'emetteur (JWT_ISSUER_PUBLIC_KEY, jamais la privee)
+	@test -n "$(JWT_ISSUER_PUBLIC_KEY)" || { echo "$(RED)** JWT_ISSUER_PUBLIC_KEY absent de makefile.conf (cf. makefile.conf.dist) **$(RESET)"; exit 1; }
+	@test -r "$(JWT_ISSUER_PUBLIC_KEY)" || { echo "$(RED)** $(JWT_ISSUER_PUBLIC_KEY) introuvable ou illisible **$(RESET)"; exit 1; }
+	@! grep -q "PRIVATE KEY" "$(JWT_ISSUER_PUBLIC_KEY)" || { echo "$(RED)** $(JWT_ISSUER_PUBLIC_KEY) contient une cle PRIVEE : refuse **$(RESET)"; exit 1; }
+	@grep -q -- "-----BEGIN PUBLIC KEY-----" "$(JWT_ISSUER_PUBLIC_KEY)" || { echo "$(RED)** $(JWT_ISSUER_PUBLIC_KEY) n'est pas une cle publique PEM **$(RESET)"; exit 1; }
+	@cp "$(JWT_ISSUER_PUBLIC_KEY)" config/jwt/public.pem
 	@echo "$(GREEN)** Cle publique de l'emetteur copiee **$(RESET)"

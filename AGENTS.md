@@ -54,8 +54,9 @@ Avant de proposer une revocation immediate ici, relire ce paragraphe.
 
 ## Regles sur les cles
 
-- `config/jwt/public.pem` — cle **publique** de l'emetteur, copiee depuis `api/config/jwt/public.pem`
-  (`make jwt-public-key`). Non versionnee.
+- `config/jwt/public.pem` — cle **publique** de l'emetteur, recopiee par `make jwt-public-key`
+  depuis `JWT_ISSUER_PUBLIC_KEY` (`makefile.conf`). Non versionnee. Le Makefile versionne ne
+  connait pas l'emplacement de `service_identity` : c'est une donnee du poste.
 - **Ne jamais copier `private.pem` ni `JWT_PASSPHRASE` dans ce depot.** Un service qui valide ne doit
   pas pouvoir emettre.
 - `config/jwt/test/` — paire dediee aux tests, **versionnee volontairement** : elle ne protege rien
@@ -518,7 +519,7 @@ make consume          # depile l'outbox a la main (Supervisor le fait deja en co
 make consume-async    # depile le transport async (RabbitMQ interne)
 make consume-user-events # idem pour les evenements d'integration recus par SQS — s'execute dans `worker`
 make fixtures         # catalogue de dev : 30 categories, 1000 produits (PURGE la base)
-make jwt-public-key   # recopie la cle publique de l'emetteur
+make jwt-public-key   # recopie la cle publique de l'emetteur (JWT_ISSUER_PUBLIC_KEY, makefile.conf)
 make jwt-test-keys    # regenere la paire de test
 ```
 
