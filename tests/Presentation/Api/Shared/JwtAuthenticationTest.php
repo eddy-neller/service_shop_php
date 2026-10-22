@@ -6,6 +6,7 @@ namespace App\Tests\Presentation\Api\Shared;
 
 use ApiPlatform\Symfony\Bundle\Test\ApiTestCase;
 use Lexik\Bundle\JWTAuthenticationBundle\Encoder\JWTEncoderInterface;
+use OpenSSLAsymmetricKey;
 use Ramsey\Uuid\Uuid;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
@@ -19,6 +20,9 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * Le cas `ROLE_USER` -> 403 est le temoin : il prouve que les tokens forges ici sont acceptes, donc
  * que chaque 401 tient au defaut injecte, et non a un token que le test aurait mal fabrique.
+ *
+ * Le cas de la cle inconnue signe lui-meme en RS256 : l'encodeur de test ne connait que la cle
+ * privee de la paire de test, et c'est justement une autre cle qu'il doit presenter.
  */
 final class JwtAuthenticationTest extends ApiTestCase
 {
@@ -105,6 +109,36 @@ final class JwtAuthenticationTest extends ApiTestCase
     }
 
     /**
+     * Le temoin du cas suivant : un token signe a la main avec la cle de test connue est accepte.
+     * Sans lui, le 401 de la cle inconnue pourrait venir d'un token que `signRs256()` aurait mal
+     * fabrique, et non de la cle.
+     */
+    public function testHandSignedTokenWithTheTrustedKeyIsAuthenticated(): void
+    {
+        $this->requestProtectedRoute(fn (): string => self::signRs256(
+            $this->readTestPrivateKey(),
+            ['roles' => ['ROLE_USER']],
+        ));
+
+        self::assertResponseStatusCodeSame(Response::HTTP_FORBIDDEN);
+    }
+
+    /**
+     * Une signature RS256 valide, mais d'une cle que ce service ne connait pas. Le payload reecrit
+     * prouve que la signature couvre les claims ; ce cas prouve que n'importe quelle cle ne suffit
+     * pas a signer. Il restera vrai avec JWKS : un token d'une cle absente du jeu devra finir ici.
+     */
+    public function testTokenSignedByAnUntrustedKeyIsRejected(): void
+    {
+        $this->requestProtectedRoute(static fn (): string => self::signRs256(
+            self::generatePrivateKey(),
+            ['roles' => ['ROLE_ADMIN']],
+        ));
+
+        self::assertResponseStatusCodeSame(Response::HTTP_UNAUTHORIZED);
+    }
+
+    /**
      * Le token est fabrique apres `createClient()`, qui boote le noyau dont `forgeToken()` lit le
      * conteneur. `Accept: application/json` est explicite : le client de test d'API Platform envoie
      * `application/ld+json`, format que ce service n'expose pas — la route repondrait 406 des que
@@ -139,6 +173,44 @@ final class JwtAuthenticationTest extends ApiTestCase
             'sub' => Uuid::uuid4()->toString(),
             'exp' => time() + 900,
         ]);
+    }
+
+    private static function signRs256(OpenSSLAsymmetricKey|string $privateKey, array $claims): string
+    {
+        $header = self::base64UrlEncode(json_encode(['alg' => 'RS256', 'typ' => 'JWT'], JSON_THROW_ON_ERROR));
+        $payload = self::base64UrlEncode(json_encode($claims + [
+            'sub' => Uuid::uuid4()->toString(),
+            'exp' => time() + 900,
+        ], JSON_THROW_ON_ERROR));
+
+        $signature = '';
+        if (!openssl_sign($header . '.' . $payload, $signature, $privateKey, OPENSSL_ALGO_SHA256)) {
+            throw new RuntimeException('signRs256: openssl_sign failed');
+        }
+
+        return $header . '.' . $payload . '.' . self::base64UrlEncode($signature);
+    }
+
+    private function readTestPrivateKey(): string
+    {
+        $projectDir = self::getContainer()->getParameter('kernel.project_dir');
+        self::assertIsString($projectDir);
+
+        $key = file_get_contents($projectDir . '/config/jwt/test/private.pem');
+        self::assertIsString($key);
+
+        return $key;
+    }
+
+    private static function generatePrivateKey(): OpenSSLAsymmetricKey
+    {
+        $key = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_RSA, 'private_key_bits' => 2048]);
+
+        if (!$key instanceof OpenSSLAsymmetricKey) {
+            throw new RuntimeException('generatePrivateKey: openssl_pkey_new failed');
+        }
+
+        return $key;
     }
 
     private static function base64UrlEncode(string $data): string
