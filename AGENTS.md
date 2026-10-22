@@ -661,8 +661,9 @@ C=$(reads); echo "miss=$((B-A)) hit=$((C-B))"   # miss > 0, hit = 0
       reste interne a ce service et Redis dedie au cache applicatif partage entre ses replicas.
 - [ ] `GET /health` repond sans que la stack de `service_identity` tourne.
 - [ ] `make unit` vert, sans test *risky*.
-- [ ] Aucun import Doctrine hors `src/Infrastructure/Persistence/`, fixtures exceptees — critere et
-      ecart connu dans `src/Infrastructure/AGENTS.md`, « Ou vit l'acces Mongo ». Verifier avec
+- [ ] Aucun import Doctrine hors `src/Infrastructure/Persistence/`, hors les **deux exceptions
+      assumees** — les fixtures et `NbProductCommand`, outil de reparation ponctuel. Critere et
+      justification dans `src/Infrastructure/AGENTS.md`, « Ou vit l'acces Mongo ». Verifier avec
       `grep -rn '^use Doctrine' src/ | grep -v Persistence` : `grep -rn Doctrine src/` compte aussi
       les commentaires, et a masque la seule vraie violation.
 - [ ] Aucun `flush()` dans un repository — seul `MongoTransactional` flushe. Le transport de

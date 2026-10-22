@@ -126,10 +126,12 @@ grep -rn '^use Doctrine' src/ | grep -v 'src/Infrastructure/Persistence'
 
 - **Exception assumée** : les fixtures (`Symfony/DataFixtures/**`) étendent le `Fixture` du bundle et
   reçoivent un `ObjectManager`. Il n'existe pas de version sans Doctrine.
-- **Écart connu, à corriger** : `Symfony/Command/Catalog/NbProductCommand` injecte le
-  `DocumentManager`, interroge `CategoryDocument` et flushe lui-même. Le corriger demande d'extraire
-  le recalcul dans `Persistence/` ou dans un cas d'usage — un chantier pour lui-même, pas un
-  déplacement de `use`.
+- **Exception assumée** : `Symfony/Command/Catalog/NbProductCommand` injecte le `DocumentManager`,
+  interroge `CategoryDocument` et flushe lui-même. C'est un outil de **réparation ponctuel** du
+  compteur dénormalisé, pas un chemin nominal : les cas d'usage du catalogue maintiennent déjà
+  `nbProduct` dans la transaction qui écrit le produit. Aucun repository n'est impliqué, et la
+  commande pilote sa propre transaction ODM — l'extraire derrière un contrat ajouterait une
+  indirection sans rien protéger. Son docblock porte le même raisonnement.
 
 ### Contrat des repositories
 
