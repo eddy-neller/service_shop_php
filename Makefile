@@ -387,13 +387,15 @@ fixtures: ## Charge les fixtures de dev (purge la base)
 	@echo "$(GREEN)** Catalogue de developpement charge **$(RESET)"
 
 ## Genere la paire de cles DEDIEE AUX TESTS (jamais celle de production)
+## Le conteneur tourne en root : sans le `chown`, les cles appartiendraient a root sur l'hote.
 .PHONY: jwt-test-keys
 jwt-test-keys: ## (Re)genere config/jwt/test/{private,public}.pem
 	@echo "$(YELLOW)** Generation de la paire JWT de test **$(RESET)"
 	@$(APP) sh -c "mkdir -p config/jwt/test && \
 		openssl genpkey -algorithm RSA -out config/jwt/test/private.pem -pkeyopt rsa_keygen_bits:2048 2>/dev/null && \
 		openssl pkey -in config/jwt/test/private.pem -out config/jwt/test/public.pem -pubout 2>/dev/null && \
-		chmod 644 config/jwt/test/private.pem config/jwt/test/public.pem"
+		chmod 644 config/jwt/test/private.pem config/jwt/test/public.pem && \
+		chown -R --reference=config/jwt config/jwt/test"
 	@echo "$(GREEN)** Paire de test generee **$(RESET)"
 
 ## Copie la cle PUBLIQUE de l'emetteur depuis service_identity
