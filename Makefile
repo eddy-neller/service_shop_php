@@ -65,7 +65,7 @@ install:
 	@echo "$(YELLOW)** Initialise MongoDB DEV **$(RESET)"
 	@make fixtures
 	@echo "$(YELLOW)** Load composer outdated & symfony:recipes **$(RESET)"
-	@make co && make csr
+	@make co && make cr
 	@echo "$(YELLOW)** Test du Jalon 1 **$(RESET)"
 	@make jwt-test-keys
 	@make db-index
@@ -216,6 +216,7 @@ ci-dry:
 .PHONY: cu
 cu:
 	@$(APP) sh -c "composer update"
+	@make console c="cache:clear -e test"
 
 ## Execute composer update dry-run
 .PHONY: cu-dry

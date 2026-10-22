@@ -15,8 +15,6 @@ use Rector\PHPUnit\CodeQuality\Rector\MethodCall\AssertEmptyNullableObjectToAsse
 use Rector\PHPUnit\CodeQuality\Rector\MethodCall\WithCallbackIdenticalToStandaloneAssertsRector;
 use Rector\PHPUnit\Set\PHPUnitSetList;
 use Rector\Set\ValueObject\SetList;
-use Rector\Strict\Rector\Empty_\DisallowedEmptyRuleFixerRector;
-use Rector\TypeDeclaration\Rector\StmtsAwareInterface\SafeDeclareStrictTypesRector;
 
 return static function (RectorConfig $rectorConfig): void {
     $rectorConfig->paths([
@@ -35,19 +33,16 @@ return static function (RectorConfig $rectorConfig): void {
 
     $rectorConfig->skip([
         __DIR__ . '/config',
+        __DIR__ . '/src/Kernel.php',
+        __DIR__ . '/tests/bootstrap.php',
         CatchExceptionNameMatchingTypeRector::class,
         ThrowWithPreviousExceptionRector::class,
-        DisallowedEmptyRuleFixerRector::class,
         SimplifyEmptyCheckOnEmptyArrayRector::class,
         AddInstanceofAssertForNullableInstanceRector::class,
         FlipTypeControlToUseExclusiveTypeRector::class,
         AssertEmptyNullableObjectToAssertInstanceofRector::class,
         WithCallbackIdenticalToStandaloneAssertsRector::class,
         NarrowWideUnionReturnTypeRector::class,
-        SafeDeclareStrictTypesRector::class => [
-            __DIR__ . '/src/Kernel.php',
-            __DIR__ . '/tests/bootstrap.php',
-        ],
         PreferPHPUnitThisCallRector::class,
     ]);
 };
