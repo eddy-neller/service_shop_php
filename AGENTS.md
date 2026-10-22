@@ -450,9 +450,20 @@ interprete comme un nom d'hote et `nginx -t` echoue.
 - **Flex est bien installe, mais le squelette n'a pas ete genere par lui.** La nuance compte, parce
   que la version courte (« pas de Flex ici ») est fausse et se verifie en trois secondes :
   `symfony/flex` est dans `require`, autorise dans `allow-plugins`, et `symfony.lock` porte
-  **24 recettes appliquees** — dont les marqueurs `###> phpunit/phpunit ###` du `.gitignore`.
-  Ce qui est vrai, c'est que `config/` a ete ecrit a la main et non depose par `symfony/skeleton`,
-  et que `allow-contrib: false` limite les recettes a celles du depot officiel.
+  **26 recettes appliquees** — dont les marqueurs `###> phpunit/phpunit ###` du `.gitignore`.
+  Ce qui est vrai, c'est que `config/` a ete ecrit a la main et non depose par `symfony/skeleton`.
+  `allow-contrib: false` ne limite pas pour autant les recettes au depot officiel : quatre viennent
+  de `recipes-contrib` (`phpstan`, `php_codesniffer`, `stof/doctrine-extensions-bundle`,
+  `stripe/stripe-php`), acceptees une a une. Le reglage reste a `false` pour que la suivante soit
+  aussi une decision. Pour en installer une :
+  `SYMFONY_ALLOW_CONTRIB=1 composer recipes:install <paquet>`, **jamais avec `--force`**. Celui-ci
+  ecrase les fichiers suivis — la recette stof remplacerait `stof_doctrine_extensions.yaml` par un
+  simple `default_locale`, sans les listeners MongoDB dont depend Gedmo — et renomme `.env` en
+  `.env.local` des que `.env.dist` existe. Un paquet dont la recette contrib a ete refusee reste dans
+  `symfony.lock` sous une entree nue (`version` seule) : la retirer avant l'installation suffit a se
+  passer de `--force`. Enfin, Flex ne reconnait un bloc `.env` qu'a son marqueur
+  `###> vendor/paquet ###` : sous un autre nom, il ajoute ses valeurs par defaut a la suite, et la
+  derniere definition l'emporte sur la vraie cle locale.
   Consequence pratique inchangee : **rien ne declare `KERNEL_CLASS`**, il est donc pose a la main
   dans `phpunit.dist.xml`. Ne pas le retirer en croyant qu'une recette le fournira.
 - **`secret_key` n'est pas requis** par `lexik/jwt-authentication-bundle` en validation seule :
