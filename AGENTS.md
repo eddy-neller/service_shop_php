@@ -351,6 +351,15 @@ L'etape `ci` est l'image des jobs de `.gitlab-ci.yml`. Elle part de `base`, et n
 part, pour que les tests tournent sur les extensions PHP de l'image deployee. Apres toute
 modification de `base` : `make ci-image-push`.
 
+**L'image `:ci` du registre vieillit seule, et c'est `composer install` qui le dit.** `base` part du
+tag flottant `php:8.4-fpm`, mais l'image du registre n'est reconstruite qu'a la main. Or
+`roave/security-advisories` est verrouille en `dev-latest` : des qu'une version de PHP sort pour une
+faille, le job echoue sur « roave/security-advisories dev-latest conflicts with php … <8.4.27 »,
+alors que tout passe en local, ou la base a ete retiree entre-temps. **Le lock n'y est pour rien, ne
+pas y toucher** : `make ci-image` (qui tire la base avec `--pull`), verifier la version de PHP dans
+l'image, puis `make ci-image-push`. Vecu le 22/10/2026 sur `service_identity` : image en 8.4.25,
+8.4.27 exigee. L'image `prod` est dans le meme cas : la reconstruire avec `--pull`.
+
 Deux exclusions du `.dockerignore` sont volontairement **absentes**, et doivent le rester :
 `public/bundles/` (les assets de l'UI d'API Platform — exclus, `/api/docs` rend des 404 en prod) et
 `config/jwt/public.pem` (sans lui le service ne peut valider aucun token). Seul `config/jwt/test/`

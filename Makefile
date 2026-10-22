@@ -187,7 +187,7 @@ logs:
 ## Construit l'image des jobs GitLab (etape `ci` de docker/app/Dockerfile)
 .PHONY: ci-image
 ci-image:
-	docker build --target ci -f docker/app/Dockerfile -t $(CI_IMAGE) .
+	docker build --pull --target ci -f docker/app/Dockerfile -t $(CI_IMAGE) .
 
 ## Construit et pousse l'image des jobs GitLab (prerequis : `docker login registry.gitlab.com`)
 .PHONY: ci-image-push
