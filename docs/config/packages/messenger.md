@@ -150,6 +150,9 @@ failure_transport: failed_user_events
   écrit deux documents.
 - **`wait_time`** vaut 20 s par défaut : le worker fait du *long polling*, donc une requête toutes
   les 20 s plutôt qu'une boucle de sondage.
+- **Décoré par `BusOutageTolerantTransport`** (`#[AsDecorator]`, rien à déclarer ici) : un bus
+  injoignable fait attendre le consommateur (1 s à 30 s) au lieu de le tuer. Sans lui, Supervisor le
+  passait `FATAL` après une vingtaine de minutes de panne — [`../../integration_events.md`](../../integration_events.md).
 
 Seul le conteneur `worker` rejoint le réseau `en_shop_php_bus` (cf. `docker-compose.override.yaml`).
 Conséquence à connaître : **`messenger:stats` sans argument échoue depuis `app`**, qui ne peut pas

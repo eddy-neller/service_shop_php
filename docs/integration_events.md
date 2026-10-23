@@ -152,10 +152,20 @@ docker compose exec app bin/console messenger:failed:show --transport=failed_use
 donc seul lui peut joindre SQS. C'est le cloisonnement qui fonctionne, pas une panne — lancer la
 commande depuis `worker`, ou lui passer les transports locaux.
 
-**Brique éteinte**, le programme Supervisor `messenger-consume-user-events` échoue à résoudre
-`aws-local` et redémarre en boucle (`exit status 1`), jusqu'à épuiser ses essais et passer `FATAL`.
-Le service, lui, continue de répondre — `/health` et l'API restent en 200. Rallumer la brique suffit
-si le budget d'essais n'est pas épuisé ; sinon, `docker compose restart worker`.
+**Brique éteinte, le consommateur reste en vie et attend.** `BusOutageTolerantTransport`, qui
+décore le transport `user_events`, reconnaît un bus injoignable (réseau, 5xx, throttling),
+journalise un `warning`, attend — 1 s, doublé à chaque échec, plafonné à 30 s — puis rend « aucun
+message ». Le worker ne meurt pas : la file est reprise au plus 30 s après le retour du bus, quelle
+qu'ait été la durée de la panne. Le service, lui, continue de répondre : `/health` et l'API restent en
+200.
+
+Avant, `Worker::run()` ne protégeant pas `$receiver->get()`, la commande mourait à chaque essai.
+Supervisor la relançait, mais une commande qui meurt avant `startsecs` compte comme un démarrage
+raté : au bout de ses 50 essais, une vingtaine de minutes, il la passait `FATAL`, et seul un
+`docker compose restart worker` la remettait en route.
+
+Une erreur qui n'est **pas** une indisponibilité — file inexistante, droits refusés, corps qui viole
+le contrat — fait toujours mourir le processus : attendre ne la résoudrait pas.
 
 ## Vérification de bout en bout
 
@@ -176,8 +186,15 @@ cd ../service_shop && make bash-db
 #    -> un seul client, `status` 2 (desactive), `version` 1 — la pierre tombale n'est pas ressuscitee
 # 4. Type inconnu (`identity.user.renamed`) -> WARNING « Unsupported integration event acknowledged »
 # 5. Corps invalide (`{"id": "casse`) -> worker en `exit status 1`, file et DLQ a zero (make queues)
-# 6. Isolation : `make down` sur la brique -> `/health` 200, worker `user_events` en crash-loop
+# 6. Isolation : `make down` sur la brique -> `/health` 200, et le consommateur `user_events`
+#    garde le MEME PID pendant toute la panne (il attend, il ne meurt plus). Ancrer le motif sur
+#    `^php` : sans lui, `pgrep -f` trouve aussi le `sh -c` qui le lance, dont la ligne le contient.
+docker compose exec worker sh -c 'ps -o pid,etime -p $(pgrep -f "^php .*messenger:consume user_events")'
+grep -oE 'waits [0-9]+ s before attempt [0-9]+' var/log/dev.log | tail -3     # 1, 2, 4… plafond 30 s
 ```
 
-Ces six scénarios ont tous été exécutés. Le point 5 est celui qui surprend : la file **et** la DLQ
+Ces six scénarios ont tous été exécutés. Le point 6, refait le 2026-10-23 avec
+`BusOutageTolerantTransport` : bus éteint plus de 5 minutes, le même processus est resté en vie
+d'un bout à l'autre (attentes de 1, 2, 4, 8, 16 puis 30 s), a journalisé « reachable again after 9
+failed attempts » au retour du bus, et le client d'un événement publié aussitôt a été créé en 4 s. Le point 5 est celui qui surprend : la file **et** la DLQ
 retombent à zéro, parce que le message a été supprimé au décodage.

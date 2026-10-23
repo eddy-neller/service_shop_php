@@ -431,6 +431,12 @@ interprete comme un nom d'hote et `nginx -t` echoue.
   `AmazonSqsReceiver` attrape l'exception de decodage, **supprime le message**, puis la relance — et
   le worker s'arrete, `Worker::run()` ne protegeant pas `$receiver->get()`. La seule trace est
   l'exception, d'ou le corps tronque qu'elle transporte. Verifie : file et DLQ retombent a zero.
+- **`Worker::run()` ne protege pas `$receiver->get()`, et le recepteur SQS est un generateur.** Une
+  file injoignable tuait donc `messenger:consume user_events` a chaque essai, jusqu'au `FATAL` de
+  Supervisor apres une vingtaine de minutes de panne. `BusOutageTolerantTransport` le fait attendre
+  a la place. Un `try` autour du seul appel a `get()` n'attraperait rien — la reception a lieu a
+  l'iteration, d'ou le `iterator_to_array()`. Le retirer ne fait rougir aucun test d'API : seulement
+  `BusOutageTolerantTransportTest`.
 - **Le cache des queries et son invalidation sont indissociables.** `QueryCacheMiddleware` seul
   servirait des lectures perimees des la premiere ecriture. Les deux ont ete branches ensemble, et
   ne doivent jamais etre desactives separement.
@@ -704,5 +710,7 @@ C=$(reads); echo "miss=$((B-A)) hit=$((C-B))"   # miss > 0, hit = 0
       declare `sign: true`.
 - [ ] Aucune suite ne depend de la brique `aws_local` : `USER_EVENTS_TRANSPORT_DSN=in-memory://` en
       test.
+- [ ] Le transport `user_events` reste decore par `BusOutageTolerantTransport`
+      (`bin/console debug:container messenger.transport.user_events` doit le montrer).
 - [ ] `make up` fonctionne sans que la passerelle ait jamais tourne.
 - [ ] `declare(strict_types=1);` dans tout nouveau fichier PHP.

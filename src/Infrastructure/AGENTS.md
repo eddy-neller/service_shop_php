@@ -247,6 +247,7 @@ entre les deux services**.
 | `UserIntegrationEvent` + ses trois enfants | le contrat, une classe par type |
 | `UserIntegrationEventSerializer` | JSON → message, et relecture de ses propres renvois de retry |
 | `Handler/*` | `hasProcessed` → dispatch → `markProcessedAndFlush` |
+| `Symfony/Messenger/Transport/BusOutageTolerantTransport` | décore `user_events` : un bus injoignable fait attendre le consommateur au lieu de le tuer |
 
 Trois règles, dont deux dont l'oubli ne lève rien :
 
@@ -258,6 +259,11 @@ Trois règles, dont deux dont l'oubli ne lève rien :
 - **Jamais `DomainEventInterface` sur un message d'intégration, jamais `sign: true` sur leurs
   handlers.** La signature est un HMAC de `kernel.secret` ; l'émetteur ne l'a pas, et chaque message
   serait refusé à la lecture, donc supprimé de la file.
+- **Le décorateur ne tolère que l'indisponibilité** : réseau, 5xx, throttling. Élargi à toute
+  `TransportException`, il ferait attendre en silence un consommateur mal configuré au lieu de le
+  laisser mourir bruyamment ; élargi au décodage, il masquerait la perte d'un corps invalide. Il doit
+  aussi reprendre **toutes** les capacités du transport SQS : Messenger les active par `instanceof`,
+  et une capacité oubliée disparaîtrait sans erreur.
 
 Détail, pièges du transport et vérification de bout en bout :
 [`docs/integration_events.md`](../../docs/integration_events.md).
