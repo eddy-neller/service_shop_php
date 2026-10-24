@@ -76,6 +76,20 @@ Sur échec, la purge a lieu quand même : une commande qui lève a pu committer 
 travail. Le collecteur est vidé dans tous les cas — un worker traite des messages en série, aucun
 événement ne doit fuir vers le suivant.
 
+### À traiter plus tard : Redis ou Varnish injoignables pendant la purge
+
+Décidé le 2026-10-24, pas encore fait. Le middleware appelle Redis (`invalidateTags`) puis Varnish
+(le `BAN` du purger) **après** le commit, dans la requête d'écriture, sans tolérance déclarée. Ce
+qui se passe si l'un des deux ne répond pas n'a pas été vérifié : on peut craindre une réponse 500
+pour une écriture pourtant committée — un client qui la rejoue la ferait deux fois —, un cache
+périmé jusqu'à son TTL, et un `BAN` Varnish jamais tenté si Redis a levé avant lui.
+
+Le chantier : mesurer d'abord (Redis puis Varnish arrêtés, une commande catalogue), puis
+**déclarer** la tolérance au lieu de l'espérer — journaliser et répondre normalement, avec un TTL
+qui borne la péremption, ou une autre issue si la mesure le justifie. En production, Varnish est la
+porte d'entrée du shop : « Varnish arrêté, application joignable » n'y existe pas, mais un `BAN` qui
+expire ou échoue, si. Même sujet côté `service_identity`, pour Redis seul.
+
 ## Quels tags, et pourquoi les deux
 
 `DomainEventCacheTags` purge **`categories-collection` et `products-collection`** pour tout fait du
