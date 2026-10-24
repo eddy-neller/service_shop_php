@@ -169,6 +169,13 @@ Trois files d'échec distinctes, **dans la base du service** et non dans le brok
 échec définitif survit ainsi à une purge ou à une perte de RabbitMQ. Elles sont consommées à la main
 (`messenger:failed:show`, `messenger:failed:retry`), jamais par un worker en attente.
 
+**Un rejeu raté retourne dans sa file, et c'est `KeepFailedReplayInFailureTransportListener` qui le
+garantit.** Laissé à lui-même, Messenger envoie un message rejoué depuis une file d'échec, s'il échoue
+sans être réessayé, dans la file d'échec **de cette file** : la globale, `failed_domain_events`, faute
+de réglage propre. Et pour `failed_domain_events` elle-même, qui est sa propre file d'échec, il
+renonce, puis le worker retire le message : **supprimé**. Vérifié le 2026-10-23. Déclarer une file
+comme sa propre `failure_transport` ne corrige rien : c'est précisément le cas où Messenger renonce.
+
 `failed_user_events` reste locale pour la même raison, doublée d'une autre : renvoyer un message
 épuisé dans SQS le ferait reconsommer en boucle, par n'importe quel worker. La file d'échec d'un
 message venu du bus appartient au service qui n'a pas su le traiter.

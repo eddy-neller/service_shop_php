@@ -132,8 +132,9 @@ l'exception, avec un extrait de 500 caractères du corps.
 **La reprise est le chemin ordinaire.** Le handler relit le corps avec le code **courant** à chaque
 passage. Si le refus venait de notre lecture du contrat — le cas le plus probable —, il suffit de
 la corriger puis de lancer `messenger:failed:retry --transport=failed_user_events` : le fait est
-traité comme s'il venait d'arriver, inbox comprise. S'il est toujours illisible, il est rejeté de
-nouveau. Un corps réellement faux chez l'émetteur reste en file d'échec, lisible par
+traité comme s'il venait d'arriver, inbox comprise. S'il est toujours illisible, il retourne dans
+`failed_user_events` — grâce à `KeepFailedReplayInFailureTransportListener` : sans lui, Messenger
+l'envoyait dans `failed_domain_events`, d'où un second rejeu raté l'aurait **supprimé**. Un corps réellement faux chez l'émetteur reste là, lisible par
 `messenger:failed:show --transport=failed_user_events -vv`, pour être compris et republié.
 
 Seul le **contrat** est traité ainsi. Un renvoi de retry illisible, écrit par ce service lui-même,
@@ -222,4 +223,5 @@ failed attempts » au retour du bus, et le client d'un événement publié aussi
 Le point 5, refait le même jour avec `UndecodableIntegrationEvent` : deux corps cassés publiés sur le
 vrai bus, l'un avant le correctif (en retry dans SQS), l'autre après. Les deux ont fini dans
 `failed_user_events`, corps **complet** lisible par `messenger:failed:show -vv`, sans que le
-consommateur ne meure, SQS et DLQ à zéro.
+consommateur ne meure, SQS et DLQ à zéro. Un `messenger:failed:retry` du corps toujours faux l'a
+relu, refusé, puis rangé de nouveau dans `failed_user_events`.

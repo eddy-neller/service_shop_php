@@ -435,6 +435,13 @@ interprete comme un nom d'hote et `nginx -t` echoue.
   `#[Autowire(service: UserIntegrationEventSerializer::class)]`. Les tests unitaires ne peuvent pas le
   voir — ils instancient la classe a la main : c'est `infra.symfony.messenger.wiring` qui le garde.
   Vecu le 2026-10-23, attrape par la verification de bout en bout.
+- **Un rejeu rate depuis une file d'echec etait perdu, ou mal range.** Messenger envoie un message
+  rejoue qui echoue encore dans la file d'echec **de la file lue** : la globale `failed_domain_events`
+  pour `failed_user_events` et `failed_async`, et rien du tout pour `failed_domain_events`, sa propre
+  file d'echec — il y renonce, et le worker retire le message. Verifie : rejoue depuis
+  `failed_domain_events`, un message toujours en echec a disparu. `KeepFailedReplayInFailureTransportListener`
+  le renvoie dans la file d'ou il a ete lu. Ne pas « corriger » en declarant une file comme sa propre
+  `failure_transport` : c'est exactement le cas ou Messenger renonce.
 - **Un corps qui viole le contrat ne doit jamais faire lever le serialiseur.** Leve au decodage,
   l'exception est attrapee par `AmazonSqsReceiver`, qui **supprime le message** puis la relance — et
   le worker meurt. Ni file d'echec, ni DLQ : le message etait perdu. Le serialiseur rend donc un
@@ -721,6 +728,8 @@ C=$(reads); echo "miss=$((B-A)) hit=$((C-B))"   # miss > 0, hit = 0
 - [ ] Aucune suite ne depend de la brique `aws_local` : `USER_EVENTS_TRANSPORT_DSN=in-memory://` en
       test.
 - [ ] Un corps qui viole le contrat finit dans `failed_user_events`, jamais en exception de decodage.
+- [ ] Un `messenger:failed:retry` qui echoue de nouveau laisse le message dans sa file d'echec
+      (`KeepFailedReplayInFailureTransportListener`).
 - [ ] Le transport `user_events` reste decore par `BusOutageTolerantTransport`
       (`bin/console debug:container messenger.transport.user_events` doit le montrer).
 - [ ] `make up` fonctionne sans que la passerelle ait jamais tourne.

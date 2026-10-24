@@ -246,6 +246,7 @@ entre les deux services**.
 |---|---|
 | `UserIntegrationEvent` + ses trois enfants | le contrat, une classe par type |
 | `UserIntegrationEventSerializer` | JSON → message, et relecture de ses propres renvois de retry. Ne lève jamais sur le contrat : rend `UndecodableIntegrationEvent` |
+| `Symfony/Messenger/Failure/KeepFailedReplayInFailureTransportListener` | un rejeu raté (`messenger:failed:retry`) retourne dans sa file d'échec, au lieu de partir dans la globale ou d'être supprimé |
 | `UndecodableIntegrationEvent` + `Handler/RejectUndecodableIntegrationEventHandler` | un corps qui viole le contrat, conservé : rejeté sans retry vers `failed_user_events`, relu à chaque `messenger:failed:retry` |
 | `Handler/*` | `hasProcessed` → dispatch → `markProcessedAndFlush` |
 | `Symfony/Messenger/Transport/BusOutageTolerantTransport` | décore `user_events` : un bus injoignable fait attendre le consommateur au lieu de le tuer |
