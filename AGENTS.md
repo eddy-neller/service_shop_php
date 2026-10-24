@@ -45,8 +45,8 @@ Le verifier imposerait un etat partage entre services (Redis commun) ou une inva
 distribuee — deux couplages juges plus couteux que la fenetre.
 
 La revocation qui fait autorite reste dans le service emetteur : `POST /api/auth/token/refresh` +
-suppression des refresh tokens (`RevokeSessionsHandler` cote `api/`). Un compte revoque ne peut pas
-obtenir de **nouveau** token ; seul l'access token deja emis survit jusqu'a son `exp`.
+suppression des refresh tokens (`RevokeSessionsHandler` cote `service_identity`). Un compte revoque
+ne peut pas obtenir de **nouveau** token ; seul l'access token deja emis survit jusqu'a son `exp`.
 
 Avant de proposer une revocation immediate ici, relire ce paragraphe.
 
@@ -54,8 +54,8 @@ Avant de proposer une revocation immediate ici, relire ce paragraphe.
 
 ## Regles sur les cles
 
-- `config/jwt/public.pem` — cle **publique** de l'emetteur, copiee depuis `api/config/jwt/public.pem`
-  (`make jwt-public-key`). Non versionnee.
+- `config/jwt/public.pem` — cle **publique** de l'emetteur, copiee depuis
+  `service_identity/config/jwt/public.pem` (`make jwt-public-key`). Non versionnee.
 - **Ne jamais copier `private.pem` ni `JWT_PASSPHRASE` dans ce depot.** Un service qui valide ne doit
   pas pouvoir emettre.
 - `config/jwt/test/` — paire dediee aux tests, **versionnee volontairement** : elle ne protege rien
