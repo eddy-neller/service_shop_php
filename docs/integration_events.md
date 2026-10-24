@@ -178,6 +178,23 @@ message ». Le worker ne meurt pas : la file est reprise au plus 30 s après le 
 qu'ait été la durée de la panne. Le service, lui, continue de répondre : `/health` et l'API restent en
 200.
 
+**Une coupure sans réponse est traitée comme les autres.** Un bus qui refuse la connexion ou dont le
+nom ne se résout plus lève aussitôt ; une connexion coupée en silence — réseau partitionné, interface
+retirée — ne levait **jamais** : le consommateur attendait une réponse qui ne viendrait pas, sans un
+avertissement, et ne reprenait pas au retour du bus. Trois réglages le ferment, et chacun manquait :
+
+- **`BoundedSqsTransportFactory` borne chaque requête à 30 s**, au-dessus des 20 s du long polling.
+  Les 300 s de `default_socket_timeout` ne jouaient pas : le transport interroge sa réponse par
+  `resolve(0.1)`, et ce délai remplace celui de la requête.
+- **`BusOutageTolerantTransport` jette la réception ratée** (`reset()`) : AsyncAws mémorise l'erreur
+  et la relance à chaque lecture, si bien que la `Connection` n'émettait plus jamais de requête.
+- **Le retour du bus se prouve** par `getMessageCount()`, qui attend sa réponse : une réception
+  encore en attente rend « aucun message » sans lever, et la prendre pour un retour remettrait
+  l'attente à 1 s à chaque essai.
+
+Pire cas d'une partition : 30 s au plus avant le premier avertissement, puis un essai toutes les
+30 à 60 s — l'attente, plafonnée à 30 s, plus la requête, bornée à 30 s.
+
 Avant, `Worker::run()` ne protégeant pas `$receiver->get()`, la commande mourait à chaque essai.
 Supervisor la relançait, mais une commande qui meurt avant `startsecs` compte comme un démarrage
 raté : au bout de ses 50 essais, une vingtaine de minutes, il la passait `FATAL`, et seul un
@@ -219,6 +236,19 @@ Ces six scénarios ont tous été exécutés. Le point 6, refait le 2026-10-23 a
 `BusOutageTolerantTransport` : bus éteint plus de 5 minutes, le même processus est resté en vie
 d'un bout à l'autre (attentes de 1, 2, 4, 8, 16 puis 30 s), a journalisé « reachable again after 9
 failed attempts » au retour du bus, et le client d'un événement publié aussitôt a été créé en 4 s.
+
+Le même point, en **coupure silencieuse**, le 2026-10-24 : `docker network disconnect
+en_shop_php_bus` sur le worker, LocalStack intact. Avant le correctif, sa connexion vers SQS est
+restée `ESTABLISHED`, aucun avertissement en dix minutes, et un message publié après le
+rebranchement est resté dans la file : seul `--time-limit=3600` l'aurait débloqué. Après, sur une
+coupure de 2 min 30 : premier avertissement à 17 s (« Operation timed out after 30000
+milliseconds »), attentes de 1, 2, 4, 8 puis 16 s, un seul « reachable again » une seconde après le
+rebranchement, le message consommé dans les 3 s — même PID d'un bout à l'autre.
+
+```bash
+docker network disconnect en_shop_php_bus en_shop_php_service_shop-worker-1   # la coupure
+docker network connect en_shop_php_bus en_shop_php_service_shop-worker-1      # le retour
+```
 
 Le point 5, refait le même jour avec `UndecodableIntegrationEvent` : deux corps cassés publiés sur le
 vrai bus, l'un avant le correctif (en retry dans SQS), l'autre après. Les deux ont fini dans

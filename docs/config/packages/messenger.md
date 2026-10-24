@@ -150,7 +150,13 @@ failure_transport: failed_user_events
   long que ce délai se verrait livrer le même message deux fois — ici il dispatche une commande et
   écrit deux documents.
 - **`wait_time`** vaut 20 s par défaut : le worker fait du *long polling*, donc une requête toutes
-  les 20 s plutôt qu'une boucle de sondage.
+  les 20 s plutôt qu'une boucle de sondage. **Ne pas l'allonger sans relever
+  `BoundedSqsTransportFactory::MAX_REQUEST_SECONDS` (30 s)** : chaque attente de message
+  dépasserait la borne et deviendrait une panne.
+- **Construit par `BoundedSqsTransportFactory`** (`#[AsDecorator]` sur la fabrique SQS de
+  FrameworkBundle) : chaque requête vers SQS est bornée à 30 s. Sans borne, une connexion coupée sans
+  réponse ne rendait jamais la main, et le consommateur attendait en silence jusqu'à son
+  `--time-limit`.
 - **Décoré par `BusOutageTolerantTransport`** (`#[AsDecorator]`, rien à déclarer ici) : un bus
   injoignable fait attendre le consommateur (1 s à 30 s) au lieu de le tuer. Sans lui, Supervisor le
   passait `FATAL` après une vingtaine de minutes de panne — [`../../integration_events.md`](../../integration_events.md).

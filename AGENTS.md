@@ -453,6 +453,15 @@ interprete comme un nom d'hote et `nginx -t` echoue.
   a la place. Un `try` autour du seul appel a `get()` n'attraperait rien — la reception a lieu a
   l'iteration, d'ou le `iterator_to_array()`. Le retirer ne fait rougir aucun test d'API : seulement
   `BusOutageTolerantTransportTest`.
+- **Une connexion SQS coupee sans reponse ne levait jamais.** Worker detache du reseau du bus : sa
+  connexion restait `ESTABLISHED`, aucun avertissement en dix minutes, et pas de reprise au retour
+  du bus — seul `--time-limit=3600` l'aurait relance. Trois causes, toutes silencieuses : aucune
+  borne de duree (le `resolve(0.1)` du transport neutralise `default_socket_timeout`), une reception
+  ratee que la `Connection` garde et dont AsyncAws relance l'erreur a chaque lecture sans nouvelle
+  requete, et une reception **en attente** prise pour un retour du bus. D'ou
+  `BoundedSqsTransportFactory` (30 s par requete), le `reset()` et la preuve par `getMessageCount()`
+  dans `BusOutageTolerantTransport`. Vecu le 2026-10-24 ; la recette est dans
+  [`docs/integration_events.md`](docs/integration_events.md).
 - **Le cache des queries et son invalidation sont indissociables.** `QueryCacheMiddleware` seul
   servirait des lectures perimees des la premiere ecriture. Les deux ont ete branches ensemble, et
   ne doivent jamais etre desactives separement.
@@ -732,5 +741,8 @@ C=$(reads); echo "miss=$((B-A)) hit=$((C-B))"   # miss > 0, hit = 0
       (`KeepFailedReplayInFailureTransportListener`).
 - [ ] Le transport `user_events` reste decore par `BusOutageTolerantTransport`
       (`bin/console debug:container messenger.transport.user_events` doit le montrer).
+- [ ] Les requetes SQS restent bornees : `messenger.transport.sqs.factory` est
+      `BoundedSqsTransportFactory` (`infra.symfony.messenger.wiring`), et `wait_time` reste sous
+      sa borne de 30 s.
 - [ ] `make up` fonctionne sans que la passerelle ait jamais tourne.
 - [ ] `declare(strict_types=1);` dans tout nouveau fichier PHP.

@@ -47,6 +47,19 @@ use Symfony\Contracts\Service\ResetInterface;
  * aussi : le sérialiseur ne la lève plus que pour un renvoi de retry illisible, écrit par ce service
  * lui-même — un corps qui viole le contrat, lui, est conservé sans jamais lever.
  *
+ * ## Attendre ne suffit pas : il faut jeter la réception ratée
+ *
+ * La `Connection` SQS garde sa réception en cours tant qu'elle n'a pas abouti. Si elle échoue,
+ * AsyncAws mémorise l'erreur et la **relance à chaque lecture** : sans rien de plus, chaque essai
+ * suivant rejouerait la même exception sans émettre de requête, bus revenu ou non. Seul `reset()`
+ * l'abandonne — « so the connection stays usable », dit Symfony —, et le worker ne l'appelle
+ * qu'après un message traité, jamais à vide. Il est donc appelé ici, à chaque indisponibilité. Il ne
+ * peut pas lever à ce moment : la `Connection` ne lance une réception que tampon vide, et le seul
+ * appel réseau de `reset()` porte sur les messages de ce tampon.
+ *
+ * Une connexion coupée **sans réponse** n'échouerait jamais d'elle-même : c'est
+ * `BoundedSqsTransportFactory` qui borne chaque requête, pour qu'elle arrive ici.
+ *
  * ## Le récepteur SQS est un générateur
  *
  * `AmazonSqsReceiver::get()` contient un `yield` : l'appeler ne fait **rien**, la requête part quand
@@ -82,25 +95,19 @@ final class BusOutageTolerantTransport implements TransportInterface, KeepaliveR
     public function get(): iterable
     {
         try {
-            $envelopes = iterator_to_array($this->inner->get(), false);
+            $this->confirmTheBusIsBack();
+
+            return iterator_to_array($this->inner->get(), false);
         } catch (TransportException $exception) {
             if (!$this->isUnavailability($exception)) {
                 throw $exception;
             }
 
+            $this->reset();
             $this->waitBeforeNextAttempt($exception);
 
             return [];
         }
-
-        if (0 < $this->failedAttempts) {
-            $this->logger->info('Integration bus reachable again after {attempts} failed attempts.', [
-                'attempts' => $this->failedAttempts,
-            ]);
-            $this->failedAttempts = 0;
-        }
-
-        return $envelopes;
     }
 
     public function ack(Envelope $envelope): void
@@ -153,6 +160,33 @@ final class BusOutageTolerantTransport implements TransportInterface, KeepaliveR
         if ($this->inner instanceof ResetInterface) {
             $this->inner->reset();
         }
+    }
+
+    /**
+     * Après une panne, la preuve que le bus répond, avant de le déclarer revenu.
+     *
+     * Un `get()` qui ne lève pas n'en est pas une : la réception est asynchrone, et une requête
+     * encore en attente rend « aucun message » comme une file vide. La prendre pour un retour
+     * remettrait le compteur à zéro à chaque essai d'une longue panne : l'attente ne dépasserait
+     * jamais 1 s, et les journaux alterneraient « unreachable » et « reachable again ».
+     * `getMessageCount()` attend sa réponse jusqu'au bout : elle rend la main, ou lève une
+     * indisponibilité. Un transport sans cette capacité ne peut rien prouver : le bus est déclaré
+     * revenu dès l'essai suivant — le cas d'aucun transport réel ici, SQS l'ayant.
+     */
+    private function confirmTheBusIsBack(): void
+    {
+        if (0 === $this->failedAttempts) {
+            return;
+        }
+
+        if ($this->inner instanceof MessageCountAwareInterface) {
+            $this->inner->getMessageCount();
+        }
+
+        $this->logger->info('Integration bus reachable again after {attempts} failed attempts.', [
+            'attempts' => $this->failedAttempts,
+        ]);
+        $this->failedAttempts = 0;
     }
 
     private function waitBeforeNextAttempt(TransportException $exception): void

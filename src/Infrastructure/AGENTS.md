@@ -249,7 +249,8 @@ entre les deux services**.
 | `Symfony/Messenger/Failure/KeepFailedReplayInFailureTransportListener` | un rejeu raté (`messenger:failed:retry`) retourne dans sa file d'échec, au lieu de partir dans la globale ou d'être supprimé |
 | `UndecodableIntegrationEvent` + `Handler/RejectUndecodableIntegrationEventHandler` | un corps qui viole le contrat, conservé : rejeté sans retry vers `failed_user_events`, relu à chaque `messenger:failed:retry` |
 | `Handler/*` | `hasProcessed` → dispatch → `markProcessedAndFlush` |
-| `Symfony/Messenger/Transport/BusOutageTolerantTransport` | décore `user_events` : un bus injoignable fait attendre le consommateur au lieu de le tuer |
+| `Symfony/Messenger/Transport/BusOutageTolerantTransport` | décore `user_events` : un bus injoignable fait attendre le consommateur au lieu de le tuer ; jette la réception ratée et prouve le retour du bus |
+| `Symfony/Messenger/Transport/BoundedSqsTransportFactory` | remplace la fabrique SQS de FrameworkBundle : chaque requête bornée à 30 s, pour qu'une connexion coupée sans réponse devienne une indisponibilité |
 
 Trois règles, dont deux dont l'oubli ne lève rien :
 

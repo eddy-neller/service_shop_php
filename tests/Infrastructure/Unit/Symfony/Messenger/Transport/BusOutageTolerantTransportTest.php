@@ -18,10 +18,14 @@ use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use stdClass;
 use Symfony\Component\Clock\MockClock;
+use Symfony\Component\HttpClient\MockHttpClient;
+use Symfony\Component\HttpClient\Response\MockResponse;
 use Symfony\Component\Messenger\Bridge\AmazonSqs\Transport\AmazonSqsTransport;
+use Symfony\Component\Messenger\Bridge\AmazonSqs\Transport\AmazonSqsTransportFactory;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\MessageDecodingFailedException;
 use Symfony\Component\Messenger\Exception\TransportException;
+use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 use Throwable;
 
 final class BusOutageTolerantTransportTest extends TestCase
@@ -92,9 +96,9 @@ final class BusOutageTolerantTransportTest extends TestCase
      */
     public function testItWaitsLongerAtEachFailureUpToThirtySeconds(): void
     {
-        $this->inner->method('get')->willThrowException(
-            new TransportException('down', 0, new NetworkException('Could not contact remote server.')),
-        );
+        $down = new TransportException('down', 0, new NetworkException('Could not contact remote server.'));
+        $this->inner->method('get')->willThrowException($down);
+        $this->inner->method('getMessageCount')->willThrowException($down);
 
         $waits = [];
         for ($attempt = 0; $attempt < 7; ++$attempt) {
@@ -114,12 +118,13 @@ final class BusOutageTolerantTransportTest extends TestCase
     {
         $down = new TransportException('down', 0, new NetworkException('Could not contact remote server.'));
         $envelope = new Envelope(new stdClass());
-        $this->inner->method('get')->willReturnOnConsecutiveCalls(
-            $this->throwing($down),
-            $this->throwing($down),
-            [$envelope],
-            $this->throwing($down),
-        );
+        // Une panne, une preuve encore ratee, la preuve qui passe et le message, puis une nouvelle panne.
+        $this->inner->method('get')->willReturnOnConsecutiveCalls($this->throwing($down), [$envelope], $this->throwing($down));
+        $this->inner->method('getMessageCount')->willReturnCallback(static function () use ($down): int {
+            static $probes = 0;
+
+            return 0 === $probes++ ? throw $down : 0;
+        });
 
         $this->transport->get();
         $this->transport->get();
@@ -129,6 +134,65 @@ final class BusOutageTolerantTransportTest extends TestCase
         $before = $this->secondsWaited();
         $this->transport->get();
         self::assertSame(1, $this->secondsWaited() - $before);
+    }
+
+    /**
+     * **Une reception en attente n'est pas un retour du bus.** Asynchrone, elle rend « aucun
+     * message » sans lever tant que sa requete n'a pas abouti. Prise pour une preuve, elle remettrait
+     * l'attente a 1 s a chaque essai d'une longue panne, et ferait alterner les journaux. Seule une
+     * reponse du bus compte : ici, la preuve echoue encore, donc l'attente continue de doubler.
+     */
+    public function testAPendingReceiveIsNotTakenForTheBusComingBack(): void
+    {
+        $down = new TransportException('down', 0, new NetworkException('Could not contact remote server.'));
+        $this->inner->method('get')->willReturnOnConsecutiveCalls($this->throwing($down), [], []);
+        $this->inner->method('getMessageCount')->willThrowException($down);
+
+        $this->transport->get();
+        $this->transport->get();
+        $this->transport->get();
+
+        self::assertSame(1 + 2 + 4, $this->secondsWaited());
+        self::assertFalse($this->logs->hasRecordThatContains('Integration bus reachable again', Level::Info));
+    }
+
+    /**
+     * **La reception ratee qui coincait le consommateur**, sur le vrai transport SQS et le vrai
+     * AsyncAws : seul le client HTTP est simule. AsyncAws memorise l'erreur d'une reception et la
+     * relance a chaque lecture ; sans `reset()`, le second `get()` rejouerait la meme exception sans
+     * emettre de requete, et le consommateur attendrait jusqu'a son `--time-limit`, bus revenu.
+     */
+    public function testTheAttemptAfterAnOutageSendsANewReceive(): void
+    {
+        $receives = 0;
+        $client = new MockHttpClient(static function (string $method, string $url, array $options) use (&$receives): MockResponse {
+            $operation = $options['normalized_headers']['x-amz-target'][0] ?? '';
+            if (str_contains($operation, 'GetQueueUrl')) {
+                return self::sqsResponse(['QueueUrl' => 'http://aws-local:4566/000000000000/shop-user-events']);
+            }
+
+            if (str_contains($operation, 'GetQueueAttributes')) {
+                return self::sqsResponse(['Attributes' => ['ApproximateNumberOfMessages' => '1']]);
+            }
+
+            ++$receives;
+
+            return 1 === $receives
+                ? new MockResponse('', ['error' => 'Could not resolve host: aws-local'])
+                : self::sqsResponse(['Messages' => [['MessageId' => 'm-1', 'ReceiptHandle' => 'r-1', 'Body' => '{}']]]);
+        });
+        $serializer = $this->createStub(SerializerInterface::class);
+        $serializer->method('decode')->willReturn(new Envelope(new stdClass()));
+        $sqs = (new AmazonSqsTransportFactory(null, $client))->createTransport(
+            'sqs://aws-local:4566/shop-user-events?sslmode=disable&auto_setup=false&region=eu-west-3&access_key=k&secret_key=s',
+            [],
+            $serializer,
+        );
+        $transport = new BusOutageTolerantTransport($sqs, $this->clock, $this->logger);
+
+        self::assertSame([], $transport->get());
+        self::assertCount(1, $transport->get(), 'Le bus revenu, le message doit etre recu.');
+        self::assertSame(2, $receives);
     }
 
     /**
@@ -214,6 +278,18 @@ final class BusOutageTolerantTransportTest extends TestCase
         }
 
         throw new RuntimeException('awsFailure: the failing result did not fail');
+    }
+
+    /**
+     * Une reponse de l'API SQS : AsyncAws parle le protocole JSON d'AWS.
+     *
+     * @param array<string, mixed> $payload
+     */
+    private static function sqsResponse(array $payload): MockResponse
+    {
+        return new MockResponse(json_encode($payload, JSON_THROW_ON_ERROR), [
+            'response_headers' => ['content-type: application/x-amz-json-1.0'],
+        ]);
     }
 
     /**
