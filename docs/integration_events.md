@@ -103,24 +103,41 @@ rend inoffensive. L'ordre inverse échangerait ce doublon contre une perte défi
 C'est aussi pourquoi la convergence des cas d'usage n'est pas un luxe : les rendre non convergents
 sans revoir ce choix ferait dupliquer un rejeu, et l'inbox ne l'arrêterait pas.
 
-## Trois issues au décodage, et une seule lève
+## Trois issues au décodage, et aucune ne perd le message
 
 | Entrée | Issue | Trace |
 |---|---|---|
 | Type connu, version 1 | message d'intégration, handler dédié | logs du worker |
 | Type inconnu, ou version > 1 | `UnsupportedIntegrationEvent` → **journalisé puis acquitté** | `warning` applicatif |
-| JSON invalide, champ manquant ou mal typé | `MessageDecodingFailedException` | l'exception seule |
+| JSON invalide, champ manquant ou mal typé | `UndecodableIntegrationEvent` → **rejeté sans retry, conservé** dans `failed_user_events` | `critical` « Removing from transport », corps complet dans la file d'échec |
 
 Le deuxième cas est ce qui rend un topic SNS utilisable : l'émetteur peut publier un type de plus, ou
 une version de plus, sans attendre le déploiement de ses abonnés. Échouer là-dessus remplirait la
 file d'échec à chaque événement qui ne nous concerne pas.
 
-> **Ce que fait réellement un refus de décodage** — vérifié, et contre-intuitif :
-> `AmazonSqsReceiver` attrape l'exception, **supprime le message de la file**, puis la relance ; le
-> worker s'arrête alors, `Worker::run()` ne protégeant pas `$receiver->get()`. Le message ne part
-> **ni** en file d'échec (elle ne reçoit que les échecs de handler) **ni** en DLQ (la redélivrance
-> n'a pas lieu, il est déjà supprimé). D'où le corps tronqué que l'exception transporte : c'est la
-> seule trace qui reste.
+### Un corps invalide est conservé, plus perdu
+
+Le sérialiseur ne lève plus sur un corps qui viole le contrat : il rend un
+`UndecodableIntegrationEvent`, qui porte le **corps complet** et la raison du refus. Son handler,
+`RejectUndecodableIntegrationEventHandler`, le rejette par `UnrecoverableMessageHandlingException` :
+pas de retry, Messenger le range directement dans `failed_user_events`, puis le message SQS est
+acquitté. Le worker continue.
+
+**Avant**, vérifié et contre-intuitif : une exception levée au décodage était attrapée par
+`AmazonSqsReceiver`, qui **supprimait le message de la file** puis la relançait, et le worker mourait
+(`Worker::run()` ne protège pas `$receiver->get()`). Le message ne partait ni en file d'échec, qui ne
+reçoit que les échecs de handler, ni en DLQ, la redélivrance n'ayant pas lieu. La seule trace était
+l'exception, avec un extrait de 500 caractères du corps.
+
+**La reprise est le chemin ordinaire.** Le handler relit le corps avec le code **courant** à chaque
+passage. Si le refus venait de notre lecture du contrat — le cas le plus probable —, il suffit de
+la corriger puis de lancer `messenger:failed:retry --transport=failed_user_events` : le fait est
+traité comme s'il venait d'arriver, inbox comprise. S'il est toujours illisible, il est rejeté de
+nouveau. Un corps réellement faux chez l'émetteur reste en file d'échec, lisible par
+`messenger:failed:show --transport=failed_user_events -vv`, pour être compris et republié.
+
+Seul le **contrat** est traité ainsi. Un renvoi de retry illisible, écrit par ce service lui-même,
+lève toujours : ce n'est pas l'émetteur qui s'est trompé.
 
 Un échec **de handler** — MongoDB indisponible, conflit de verrou — suit le chemin normal : retry
 différé de 10 s à 5 min, puis `failed_user_events`, dans la base de ce service.
@@ -145,7 +162,8 @@ différé de 10 s à 5 min, puis `failed_user_events`, dans la base de ce servic
 ```bash
 make consume-user-events                 # dépiler à la main (brique `aws_local` démarrée requise)
 docker compose exec worker bin/console messenger:stats          # depuis `worker`, pas `app`
-docker compose exec app bin/console messenger:failed:show --transport=failed_user_events
+docker compose exec app bin/console messenger:failed:show --transport=failed_user_events -vv   # corps compris
+docker compose exec app bin/console messenger:failed:retry --transport=failed_user_events       # relu avec le code courant
 ```
 
 **`messenger:stats` sans argument échoue depuis `app`** : seul le `worker` rejoint le réseau du bus,
@@ -164,8 +182,9 @@ Supervisor la relançait, mais une commande qui meurt avant `startsecs` compte c
 raté : au bout de ses 50 essais, une vingtaine de minutes, il la passait `FATAL`, et seul un
 `docker compose restart worker` la remettait en route.
 
-Une erreur qui n'est **pas** une indisponibilité — file inexistante, droits refusés, corps qui viole
-le contrat — fait toujours mourir le processus : attendre ne la résoudrait pas.
+Une erreur qui n'est **pas** une indisponibilité — file inexistante, droits refusés — fait toujours
+mourir le processus : attendre ne la résoudrait pas. Un corps qui viole le contrat, lui, n'arrive
+plus jusque-là : il est conservé dans la file d'échec (section précédente).
 
 ## Vérification de bout en bout
 
@@ -185,7 +204,9 @@ cd ../service_shop && make bash-db
 # 3. Commutativité : publier `deleted` puis `registered` pour un compte jamais provisionné
 #    -> un seul client, `status` 2 (desactive), `version` 1 — la pierre tombale n'est pas ressuscitee
 # 4. Type inconnu (`identity.user.renamed`) -> WARNING « Unsupported integration event acknowledged »
-# 5. Corps invalide (`{"id": "casse`) -> worker en `exit status 1`, file et DLQ a zero (make queues)
+# 5. Corps invalide (`{"id": "casse`) -> `critical` « Removing from transport », le worker garde son
+#    PID, file et DLQ a zero (make queues), et le corps COMPLET est dans `failed_user_events` :
+docker compose exec app bin/console messenger:failed:show --transport=failed_user_events -vv
 # 6. Isolation : `make down` sur la brique -> `/health` 200, et le consommateur `user_events`
 #    garde le MEME PID pendant toute la panne (il attend, il ne meurt plus). Ancrer le motif sur
 #    `^php` : sans lui, `pgrep -f` trouve aussi le `sh -c` qui le lance, dont la ligne le contient.
@@ -196,5 +217,9 @@ grep -oE 'waits [0-9]+ s before attempt [0-9]+' var/log/dev.log | tail -3     # 
 Ces six scénarios ont tous été exécutés. Le point 6, refait le 2026-10-23 avec
 `BusOutageTolerantTransport` : bus éteint plus de 5 minutes, le même processus est resté en vie
 d'un bout à l'autre (attentes de 1, 2, 4, 8, 16 puis 30 s), a journalisé « reachable again after 9
-failed attempts » au retour du bus, et le client d'un événement publié aussitôt a été créé en 4 s. Le point 5 est celui qui surprend : la file **et** la DLQ
-retombent à zéro, parce que le message a été supprimé au décodage.
+failed attempts » au retour du bus, et le client d'un événement publié aussitôt a été créé en 4 s.
+
+Le point 5, refait le même jour avec `UndecodableIntegrationEvent` : deux corps cassés publiés sur le
+vrai bus, l'un avant le correctif (en retry dans SQS), l'autre après. Les deux ont fini dans
+`failed_user_events`, corps **complet** lisible par `messenger:failed:show -vv`, sans que le
+consommateur ne meure, SQS et DLQ à zéro.

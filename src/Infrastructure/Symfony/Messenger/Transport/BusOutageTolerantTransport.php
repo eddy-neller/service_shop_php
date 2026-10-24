@@ -43,9 +43,9 @@ use Symfony\Contracts\Service\ResetInterface;
  * d'étranglement. AsyncAws les a déjà réessayées en interne quand elles arrivent ici.
  *
  * **Tout le reste remonte tel quel.** Une file inexistante, des droits refusés : attendre ne les
- * résoudra pas, et le processus doit mourir bruyamment. Un corps qui viole le contrat
- * (`MessageDecodingFailedException`) remonte aussi : ce n'est pas une indisponibilité, et c'est un
- * autre défaut, traité ailleurs.
+ * résoudra pas, et le processus doit mourir bruyamment. Une `MessageDecodingFailedException` remonte
+ * aussi : le sérialiseur ne la lève plus que pour un renvoi de retry illisible, écrit par ce service
+ * lui-même — un corps qui viole le contrat, lui, est conservé sans jamais lever.
  *
  * ## Le récepteur SQS est un générateur
  *

@@ -46,7 +46,7 @@ framework:
 
       # Evenements d'integration recus de `service_identity`, par la file SQS `shop-user-events`.
       # Seul transport dont le contenu vienne d'un autre service : d'ou un serialiseur dedie, qui
-      # traduit le contrat JSON et refuse ce qui ne le respecte pas.
+      # traduit le contrat JSON, et conserve dans `failed_user_events` ce qui ne le respecte pas.
       #
       # `auto_setup=false` : la file et son abonnement appartiennent a la brique `aws_local` en
       # developpement, a l'IaC en production. Les creer ici demanderait a ce service des droits

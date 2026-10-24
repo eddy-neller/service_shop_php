@@ -28,24 +28,28 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
  * ensuite en client. L'abonnement SQS est en `RawMessageDelivery=true`, donc le corps recu est
  * exactement celui publie — pas l'enveloppe de notification de SNS.
  *
- * ## Trois issues, et une seule leve
+ * ## Trois issues, et aucune ne leve
  *
  * | Entree | Issue |
  * |---|---|
  * | Type connu, version 1 | message d'integration, handler dedie |
  * | Type inconnu, ou version > 1 | `UnsupportedIntegrationEvent` : journalise puis **acquitte** |
- * | JSON invalide, champ manquant ou mal type | `MessageDecodingFailedException` |
+ * | JSON invalide, champ manquant ou mal type | `UndecodableIntegrationEvent` : **conserve** dans `failed_user_events` |
  *
  * Le second cas est ce qui permet a l'emetteur de publier un type de plus sans attendre le
  * deploiement de ses abonnes. Le troisieme est une violation du contrat, donc un bug : il doit
- * etre bruyant.
+ * etre bruyant, **et ne rien perdre**.
  *
- * > **Ce que fait reellement `MessageDecodingFailedException` :** `AmazonSqsReceiver` attrape
- * > cette exception, **supprime le message de la file**, puis la relance — le worker s'arrete donc
- * > aussi, car `Worker::run()` ne protege pas `$receiver->get()`. Le message ne part ni en file
- * > d'echec (elle ne recoit que les echecs de handler) ni en DLQ (la redelivrance n'a pas lieu,
- * > il est deja supprime). **La seule trace est l'exception**, d'ou le corps tronque qu'elle
- * > transporte.
+ * > **Pourquoi ne pas lever.** Une exception levee pendant le decodage est attrapee par
+ * > `AmazonSqsReceiver`, qui **supprime le message de la file** puis la relance — et le worker
+ * > meurt, `Worker::run()` ne protegeant pas `$receiver->get()`. Le message ne partait ni en file
+ * > d'echec (elle ne recoit que les echecs de handler) ni en DLQ (il etait deja supprime) : la
+ * > seule trace etait l'exception, avec un extrait du corps. Rendu comme un message ordinaire, le
+ * > corps fautif suit au contraire le chemin des echecs de handler : son handler le rejette sans
+ * > retry, et Messenger le range dans la file d'echec, corps complet compris.
+ *
+ * Seul le **contrat** est traite ainsi. Un renvoi de retry illisible — ecrit par ce service lui-meme
+ * — leve toujours : ce n'est pas l'emetteur qui a viole le contrat, c'est un bug d'ici.
  *
  * ## Relire ses propres renvois
  *
@@ -69,9 +73,6 @@ final readonly class UserIntegrationEventSerializer implements SerializerInterfa
     /** Version du contrat que ce service sait lire. Au-dela, le message est acquitte sans effet. */
     public const int VERSION = 1;
 
-    /** Longueur du corps conserve dans l'exception de decodage : seule trace d'un message perdu. */
-    private const int EXCERPT_LENGTH = 500;
-
     public function __construct(
         #[Autowire(service: 'messenger.transport.symfony_serializer')]
         private SerializerInterface $messengerSerializer,
@@ -85,13 +86,32 @@ final readonly class UserIntegrationEventSerializer implements SerializerInterfa
         }
 
         $body = is_string($encodedEnvelope['body'] ?? null) ? $encodedEnvelope['body'] : '';
+
+        try {
+            return $this->envelope($this->messageOf($body));
+        } catch (MessageDecodingFailedException $exception) {
+            return $this->envelope(new UndecodableIntegrationEvent($body, $exception->getMessage()));
+        }
+    }
+
+    public function encode(Envelope $envelope): array
+    {
+        return $this->messengerSerializer->encode($envelope);
+    }
+
+    /**
+     * Le contrat, lu strictement. Leve `MessageDecodingFailedException` des qu'il est viole : c'est
+     * `decode()` qui en fait un message conserve, et non une perte.
+     */
+    private function messageOf(string $body): object
+    {
         $payload = $this->payloadOf($body);
 
-        $eventId = $this->stringOf($payload['id'] ?? null, 'id', $body);
-        $type = $this->stringOf($payload['type'] ?? null, 'type', $body);
-        $version = $this->intOf($payload['version'] ?? null, 'version', $body);
+        $eventId = $this->stringOf($payload['id'] ?? null, 'id');
+        $type = $this->stringOf($payload['type'] ?? null, 'type');
+        $version = $this->intOf($payload['version'] ?? null, 'version');
 
-        return $this->envelope(match (true) {
+        return match (true) {
             /*
              * L'ordre porte une decision : le controle de version passe avant le type. Un
              * `identity.user.registered` en version 2 part donc en `UnsupportedIntegrationEvent` —
@@ -101,26 +121,21 @@ final readonly class UserIntegrationEventSerializer implements SerializerInterfa
             self::VERSION !== $version => new UnsupportedIntegrationEvent($eventId, $type, $version),
             'identity.user.registered' === $type => new UserRegisteredIntegrationEvent(
                 $eventId,
-                $this->userAccountIdOf($payload, $body),
-                $this->occurredAtOf($payload, $body),
+                $this->userAccountIdOf($payload),
+                $this->occurredAtOf($payload),
             ),
             'identity.user.created_by_admin' === $type => new UserCreatedByAdminIntegrationEvent(
                 $eventId,
-                $this->userAccountIdOf($payload, $body),
-                $this->occurredAtOf($payload, $body),
+                $this->userAccountIdOf($payload),
+                $this->occurredAtOf($payload),
             ),
             'identity.user.deleted' === $type => new UserDeletedIntegrationEvent(
                 $eventId,
-                $this->userAccountIdOf($payload, $body),
-                $this->occurredAtOf($payload, $body),
+                $this->userAccountIdOf($payload),
+                $this->occurredAtOf($payload),
             ),
             default => new UnsupportedIntegrationEvent($eventId, $type, $version),
-        });
-    }
-
-    public function encode(Envelope $envelope): array
-    {
-        return $this->messengerSerializer->encode($envelope);
+        };
     }
 
     /**
@@ -149,29 +164,29 @@ final readonly class UserIntegrationEventSerializer implements SerializerInterfa
         try {
             $payload = json_decode($body, true, flags: JSON_THROW_ON_ERROR);
         } catch (JsonException $exception) {
-            throw $this->decodingFailure('body is not valid JSON', $body, $exception);
+            throw $this->decodingFailure('body is not valid JSON', $exception);
         }
 
         if (!is_array($payload)) {
-            throw $this->decodingFailure('body is not a JSON object', $body);
+            throw $this->decodingFailure('body is not a JSON object');
         }
 
         return $payload;
     }
 
-    private function stringOf(mixed $value, string $key, string $body): string
+    private function stringOf(mixed $value, string $key): string
     {
         if (!is_string($value) || '' === $value) {
-            throw $this->decodingFailure(sprintf('"%s" is missing or not a non-empty string', $key), $body);
+            throw $this->decodingFailure(sprintf('"%s" is missing or not a non-empty string', $key));
         }
 
         return $value;
     }
 
-    private function intOf(mixed $value, string $key, string $body): int
+    private function intOf(mixed $value, string $key): int
     {
         if (!is_int($value)) {
-            throw $this->decodingFailure(sprintf('"%s" is missing or not an integer', $key), $body);
+            throw $this->decodingFailure(sprintf('"%s" is missing or not an integer', $key));
         }
 
         return $value;
@@ -180,42 +195,39 @@ final readonly class UserIntegrationEventSerializer implements SerializerInterfa
     /**
      * @param array<array-key, mixed> $payload
      */
-    private function userAccountIdOf(array $payload, string $body): string
+    private function userAccountIdOf(array $payload): string
     {
         $data = $payload['data'] ?? null;
 
         if (!is_array($data)) {
-            throw $this->decodingFailure('"data" is missing or not an object', $body);
+            throw $this->decodingFailure('"data" is missing or not an object');
         }
 
-        return $this->stringOf($data['userAccountId'] ?? null, 'userAccountId', $body);
+        return $this->stringOf($data['userAccountId'] ?? null, 'userAccountId');
     }
 
     /**
      * @param array<array-key, mixed> $payload
      */
-    private function occurredAtOf(array $payload, string $body): DateTimeImmutable
+    private function occurredAtOf(array $payload): DateTimeImmutable
     {
-        $value = $this->stringOf($payload['occurredAt'] ?? null, 'occurredAt', $body);
+        $value = $this->stringOf($payload['occurredAt'] ?? null, 'occurredAt');
 
         try {
             // Lecture permissive d'une date par ailleurs contrainte par le contrat : refuser un
             // `Z` la ou l'emetteur ecrit `+00:00` serait une panne pour rien.
             return new DateTimeImmutable($value);
         } catch (Exception $exception) {
-            throw $this->decodingFailure('"occurredAt" is not a readable date', $body, $exception);
+            throw $this->decodingFailure('"occurredAt" is not a readable date', $exception);
         }
     }
 
-    private function decodingFailure(string $reason, string $body, ?Exception $previous = null): MessageDecodingFailedException
+    /**
+     * La raison seule : le corps n'est plus une trace a sauver, `UndecodableIntegrationEvent` le
+     * garde en entier.
+     */
+    private function decodingFailure(string $reason, ?Exception $previous = null): MessageDecodingFailedException
     {
-        return new MessageDecodingFailedException(
-            sprintf(
-                'Invalid user integration event: %s. Body (truncated): %s',
-                $reason,
-                mb_substr($body, 0, self::EXCERPT_LENGTH),
-            ),
-            previous: $previous,
-        );
+        return new MessageDecodingFailedException(sprintf('Invalid user integration event: %s', $reason), previous: $previous);
     }
 }

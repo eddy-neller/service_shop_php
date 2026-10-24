@@ -245,7 +245,8 @@ entre les deux services**.
 | Classe | Rôle |
 |---|---|
 | `UserIntegrationEvent` + ses trois enfants | le contrat, une classe par type |
-| `UserIntegrationEventSerializer` | JSON → message, et relecture de ses propres renvois de retry |
+| `UserIntegrationEventSerializer` | JSON → message, et relecture de ses propres renvois de retry. Ne lève jamais sur le contrat : rend `UndecodableIntegrationEvent` |
+| `UndecodableIntegrationEvent` + `Handler/RejectUndecodableIntegrationEventHandler` | un corps qui viole le contrat, conservé : rejeté sans retry vers `failed_user_events`, relu à chaque `messenger:failed:retry` |
 | `Handler/*` | `hasProcessed` → dispatch → `markProcessedAndFlush` |
 | `Symfony/Messenger/Transport/BusOutageTolerantTransport` | décore `user_events` : un bus injoignable fait attendre le consommateur au lieu de le tuer |
 
@@ -261,7 +262,8 @@ Trois règles, dont deux dont l'oubli ne lève rien :
   serait refusé à la lecture, donc supprimé de la file.
 - **Le décorateur ne tolère que l'indisponibilité** : réseau, 5xx, throttling. Élargi à toute
   `TransportException`, il ferait attendre en silence un consommateur mal configuré au lieu de le
-  laisser mourir bruyamment ; élargi au décodage, il masquerait la perte d'un corps invalide. Il doit
+  laisser mourir bruyamment. Un corps qui viole le contrat ne l'atteint plus — le sérialiseur le
+  conserve —, et un renvoi de retry illisible doit continuer à remonter : c'est un bug d'ici. Il doit
   aussi reprendre **toutes** les capacités du transport SQS : Messenger les active par `instanceof`,
   et une capacité oubliée disparaîtrait sans erreur.
 
@@ -333,7 +335,9 @@ Deux périmètres, jamais mélangés :
   `infra.api-platform.serializer`, `infra.adapter.catalog`.
 - **`tests/Infrastructure/Integration/`** — `KernelTestCase`, via `MongoPersistenceTestCase` : ce
   qu'on ne peut vérifier qu'avec un vrai MongoDB (mapping, index, transactions). Suite :
-  `infra.persist`.
+  `infra.persist`. Plus `infra.symfony.messenger.wiring`, qui ne touche pas MongoDB : elle construit
+  chaque handler d'intégration depuis le vrai conteneur, seul endroit où se voit ce que Symfony
+  injecte réellement (un sérialiseur de transport décoré par `SigningSerializer`, par exemple).
 
 > Si un test a besoin du kernel, il n'a rien à faire dans `Unit/`. Inversement, un test qui boote le
 > kernel sans jamais s'en servir doit passer en `TestCase`.

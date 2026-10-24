@@ -152,8 +152,9 @@ final class BusOutageTolerantTransportTest extends TestCase
     }
 
     /**
-     * Un corps qui viole le contrat n'est pas une panne du bus : il remonte, et c'est un autre
-     * defaut, traite a part. L'avaler ici masquerait sa perte.
+     * Une erreur de decodage n'est pas une panne du bus : elle remonte. Le serialiseur ne la leve
+     * plus que pour un renvoi de retry illisible, ecrit par ce service lui-meme — un bug d'ici, que
+     * l'attente masquerait.
      */
     public function testItLetsAnUndecodableBodyThrough(): void
     {

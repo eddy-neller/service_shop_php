@@ -137,8 +137,9 @@ failure_transport: failed_user_events
 **Le seul transport dont le contenu vienne d'un autre service.** Tout le reste en découle :
 
 - **`serializer`** dédié, parce que le corps est un contrat JSON et non un message Messenger. Il
-  traduit les types connus, acquitte ce qu'il ne sait pas lire, et refuse ce qui viole le contrat —
-  détail dans [`../../integration_events.md`](../../integration_events.md).
+  traduit les types connus, acquitte ce qu'il ne sait pas lire, et **conserve** dans
+  `failed_user_events` ce qui viole le contrat — détail dans
+  [`../../integration_events.md`](../../integration_events.md).
 - **`auto_setup=false`** dans le DSN : la file et son abonnement appartiennent à la brique
   `aws_local` en développement, à l'IaC en production. Les créer ici demanderait à ce service un
   droit IAM de création de file, pour une ressource qu'il ne possède pas.
@@ -172,8 +173,9 @@ Trois files d'échec distinctes, **dans la base du service** et non dans le brok
 épuisé dans SQS le ferait reconsommer en boucle, par n'importe quel worker. La file d'échec d'un
 message venu du bus appartient au service qui n'a pas su le traiter.
 
-Elles ne reçoivent que les échecs de **handler**. Un corps qui viole le contrat échoue plus tôt, au
-décodage, et suit un chemin tout autre — voir
+Elles ne reçoivent que les échecs de **handler**. C'est pourquoi un corps qui viole le contrat n'est
+plus refusé au décodage : devenu `UndecodableIntegrationEvent`, il échoue dans son handler, sans
+retry, et arrive ainsi dans `failed_user_events`, corps complet compris — voir
 [`../../integration_events.md`](../../integration_events.md).
 
 ---

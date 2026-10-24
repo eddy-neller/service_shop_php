@@ -427,10 +427,19 @@ interprete comme un nom d'hote et `nginx -t` echoue.
   `kernel.secret` pour tout message de ce type. `service_identity` n'a pas notre `APP_SECRET` —
   chaque message serait refuse a la lecture, **donc supprime de la file**. Meme raison pour ne pas
   mettre `sign: true` sur les handlers d'integration.
-- **Un corps qui viole le contrat n'est ni rejoue, ni mis en file d'echec, ni envoye en DLQ.**
-  `AmazonSqsReceiver` attrape l'exception de decodage, **supprime le message**, puis la relance — et
-  le worker s'arrete, `Worker::run()` ne protegeant pas `$receiver->get()`. La seule trace est
-  l'exception, d'ou le corps tronque qu'elle transporte. Verifie : file et DLQ retombent a zero.
+- **Le serialiseur d'un transport n'est pas sa classe concrete.** `LogDomainEventHandler` declare
+  `sign: true`, et Symfony decore alors le serialiseur de **chaque** transport par `SigningSerializer`.
+  Un service qui injecte `UserIntegrationEventSerializer` par sa classe recoit donc un
+  `SigningSerializer` : `TypeError` a la construction, **a l'execution seulement**, que Messenger
+  prend pour un echec ordinaire et rejoue. Typer `SerializerInterface`, avec
+  `#[Autowire(service: UserIntegrationEventSerializer::class)]`. Les tests unitaires ne peuvent pas le
+  voir — ils instancient la classe a la main : c'est `infra.symfony.messenger.wiring` qui le garde.
+  Vecu le 2026-10-23, attrape par la verification de bout en bout.
+- **Un corps qui viole le contrat ne doit jamais faire lever le serialiseur.** Leve au decodage,
+  l'exception est attrapee par `AmazonSqsReceiver`, qui **supprime le message** puis la relance — et
+  le worker meurt. Ni file d'echec, ni DLQ : le message etait perdu. Le serialiseur rend donc un
+  `UndecodableIntegrationEvent`, que son handler rejette sans retry vers `failed_user_events`, corps
+  complet compris. Remettre un `throw` sur le contrat ferait rougir `UserIntegrationEventSerializerTest`.
 - **`Worker::run()` ne protege pas `$receiver->get()`, et le recepteur SQS est un generateur.** Une
   file injoignable tuait donc `messenger:consume user_events` a chaque essai, jusqu'au `FATAL` de
   Supervisor apres une vingtaine de minutes de panne. `BusOutageTolerantTransport` le fait attendre
@@ -565,6 +574,7 @@ Regles :
 | `infra.persist` | `tests/Infrastructure/Integration/Persistence` | **oui** |
 | `infra.symfony.command` | `tests/Infrastructure/Unit/Symfony/Command` | non |
 | `infra.symfony.messenger` | `tests/Infrastructure/Unit/Symfony/Messenger` | non |
+| `infra.symfony.messenger.wiring` | `tests/Infrastructure/Integration/Symfony/Messenger` | non |
 | `infra.symfony.security` | `tests/Infrastructure/Unit/Symfony/Security` | non |
 | `pres.state.catalog` | `tests/Presentation/Unit/State/Catalog` | non |
 | `pres.state.customer` | `tests/Presentation/Unit/State/Customer` | non |
@@ -710,6 +720,7 @@ C=$(reads); echo "miss=$((B-A)) hit=$((C-B))"   # miss > 0, hit = 0
       declare `sign: true`.
 - [ ] Aucune suite ne depend de la brique `aws_local` : `USER_EVENTS_TRANSPORT_DSN=in-memory://` en
       test.
+- [ ] Un corps qui viole le contrat finit dans `failed_user_events`, jamais en exception de decodage.
 - [ ] Le transport `user_events` reste decore par `BusOutageTolerantTransport`
       (`bin/console debug:container messenger.transport.user_events` doit le montrer).
 - [ ] `make up` fonctionne sans que la passerelle ait jamais tourne.

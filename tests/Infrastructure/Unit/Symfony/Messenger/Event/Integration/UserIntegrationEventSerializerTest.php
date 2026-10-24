@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Infrastructure\Unit\Symfony\Messenger\Event\Integration;
 
+use App\Infrastructure\Symfony\Messenger\Event\Integration\UndecodableIntegrationEvent;
 use App\Infrastructure\Symfony\Messenger\Event\Integration\UnsupportedIntegrationEvent;
 use App\Infrastructure\Symfony\Messenger\Event\Integration\UserCreatedByAdminIntegrationEvent;
 use App\Infrastructure\Symfony\Messenger\Event\Integration\UserDeletedIntegrationEvent;
@@ -132,12 +133,21 @@ final class UserIntegrationEventSerializerTest extends TestCase
         self::assertSame(self::ACCOUNT_ID, $message->userAccountId);
     }
 
+    /**
+     * Un corps qui viole le contrat est **conserve**, pas refuse. Leve ici, l'exception faisait
+     * supprimer le message de la file par `AmazonSqsReceiver` et tuait le worker : le fait etait
+     * perdu sans trace durable. Rendu comme message, il part dans `failed_user_events`.
+     */
     #[DataProvider('brokenBodies')]
-    public function testItRefusesABodyThatViolatesTheContract(string $body): void
+    public function testItKeepsABodyThatViolatesTheContract(string $body): void
     {
-        $this->expectException(MessageDecodingFailedException::class);
+        $envelope = $this->serializer->decode(['body' => $body]);
 
-        $this->serializer->decode(['body' => $body]);
+        $message = $envelope->getMessage();
+        self::assertInstanceOf(UndecodableIntegrationEvent::class, $message);
+        self::assertSame($body, $message->body);
+        self::assertStringStartsWith('Invalid user integration event: ', $message->reason);
+        self::assertSame('event.bus', $envelope->last(BusNameStamp::class)?->getBusName());
     }
 
     /**
@@ -160,18 +170,32 @@ final class UserIntegrationEventSerializerTest extends TestCase
     }
 
     /**
-     * Le message fautif est supprime de la file par le receiver, et le worker s'arrete : l'exception
-     * est la seule trace qui reste. Elle doit donc porter de quoi reconnaitre le corps.
+     * Le corps est garde **en entier**, au-dela des 500 caracteres de l'ancien extrait : c'est lui
+     * qu'on relira une fois la lecture corrigee. La raison dit ce qui a ete refuse.
      */
-    public function testTheRefusalCarriesAnExcerptOfTheBody(): void
+    public function testTheKeptBodyIsCompleteAndCarriesTheReason(): void
     {
-        try {
-            $this->serializer->decode(['body' => '{"id": "' . self::EVENT_ID . '", "type": 42}']);
-            self::fail('Le corps fautif aurait du etre refuse.');
-        } catch (MessageDecodingFailedException $exception) {
-            self::assertStringContainsString('"type" is missing or not a non-empty string', $exception->getMessage());
-            self::assertStringContainsString(self::EVENT_ID, $exception->getMessage());
-        }
+        $body = '{"id": "' . self::EVENT_ID . '", "type": 42, "padding": "' . str_repeat('x', 2000) . '"}';
+
+        $message = $this->serializer->decode(['body' => $body])->getMessage();
+
+        self::assertInstanceOf(UndecodableIntegrationEvent::class, $message);
+        self::assertSame($body, $message->body);
+        self::assertStringContainsString('"type" is missing or not a non-empty string', $message->reason);
+    }
+
+    /**
+     * Seul le **contrat** est conserve. Un renvoi de retry illisible a ete ecrit par ce service
+     * lui-meme : ce n'est pas l'emetteur qui s'est trompe, c'est un bug d'ici, et il leve toujours.
+     */
+    public function testAnUnreadableOwnRedeliveryStillFails(): void
+    {
+        $this->expectException(MessageDecodingFailedException::class);
+
+        $this->serializer->decode([
+            'body' => '{"casse',
+            'headers' => ['type' => UserRegisteredIntegrationEvent::class],
+        ]);
     }
 
     /**
