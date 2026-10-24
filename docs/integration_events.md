@@ -226,10 +226,15 @@ cd ../service_shop && make bash-db
 #    PID, file et DLQ a zero (make queues), et le corps COMPLET est dans `failed_user_events` :
 docker compose exec app bin/console messenger:failed:show --transport=failed_user_events -vv
 # 6. Isolation : `make down` sur la brique -> `/health` 200, et le consommateur `user_events`
-#    garde le MEME PID pendant toute la panne (il attend, il ne meurt plus). Ancrer le motif sur
-#    `^php` : sans lui, `pgrep -f` trouve aussi le `sh -c` qui le lance, dont la ligne le contient.
+#    garde le MEME PID pendant toute la panne (il attend, il ne meurt plus). Comparer les PID
+#    AVANT de rallumer la brique : c'est la panne que ce point verifie, pas le retour (voir plus
+#    bas). Ancrer le motif sur `^php` : sans lui, `pgrep -f` trouve aussi le `sh -c` qui le lance,
+#    dont la ligne le contient.
 docker compose exec worker sh -c 'ps -o pid,etime -p $(pgrep -f "^php .*messenger:consume user_events")'
 grep -oE 'waits [0-9]+ s before attempt [0-9]+' var/log/dev.log | tail -3     # 1, 2, 4… plafond 30 s
+#    Au `make up` de la brique, le PID PEUT changer, et ce n'est pas une regression : voir
+#    « Un PID qui change au retour de LocalStack ».
+docker compose logs worker --since 5m | grep -E 'messenger-consume-user-events|ERROR.*QueueDoesNotExist'
 ```
 
 Ces six scénarios ont tous été exécutés. Le point 6, refait le 2026-10-23 avec
@@ -255,3 +260,28 @@ vrai bus, l'un avant le correctif (en retry dans SQS), l'autre après. Les deux 
 `failed_user_events`, corps **complet** lisible par `messenger:failed:show -vv`, sans que le
 consommateur ne meure, SQS et DLQ à zéro. Un `messenger:failed:retry` du corps toujours faux l'a
 relu, refusé, puis rangé de nouveau dans `failed_user_events`.
+
+### Un PID qui change au retour de LocalStack
+
+`make down` sur la brique **détruit la file** : LocalStack ne garde aucun état, et c'est son
+script d'init qui recrée `shop-user-events` au `make up`. Entre le moment où LocalStack répond et
+celui où l'init a fini, la file n'existe pas. Si le consommateur interroge SQS dans cette fenêtre,
+il reçoit `QueueDoesNotExist`. Ce n'est pas une indisponibilité, et c'est voulu : une file absente
+est une erreur de configuration, qui doit faire mourir le processus et finir `FATAL` si elle dure.
+Supervisor le relance donc, quelques fois, jusqu'à ce que la file existe.
+
+Remesuré le 2026-10-24 : même PID pendant les 4 min 30 de panne, puis mort à 14:35:31 sur
+`QueueDoesNotExist`, trois relances ratées, et un consommateur reparti seul à 14:35:39 — loin des
+50 essais de `startretries`. L'événement publié pendant la panne a été consommé ensuite, sans
+intervention. Le 2026-10-23, le même processus avait au contraire survécu au retour : tout dépend
+de l'instant où il interroge SQS pendant l'init.
+
+**Développement seulement.** En production, une panne de SQS ne supprime pas la file : seul le
+cas « bus injoignable » existe, et le consommateur attend sans mourir. La coupure silencieuse
+décrite plus haut, qui laisse LocalStack intact, n'a pas non plus ce comportement.
+
+**Le PID change aussi toutes les heures, panne ou pas** : `--time-limit=3600` fait sortir la
+commande proprement, et Supervisor la relance. Une panne de plus d'une heure, ou une vérification
+qui chevauche cette échéance, montre donc deux PID sans que rien n'ait échoué. Les logs les
+distinguent : `exited: … (exit status 0; expected)` pour la relance horaire, `exit status 1; not
+expected` précédé d'un `QueueDoesNotExist` pour le retour de LocalStack.
