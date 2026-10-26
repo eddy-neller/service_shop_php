@@ -47,7 +47,7 @@ Les reponses de collection et d'item exposent les groupes de serialisation `shop
 
 `parent` et `children` sont limites a une profondeur de un (`MaxDepth(1)`). Cette limite, ainsi que `ENABLE_MAX_DEPTH`, protege les reponses contre les cycles ou une expansion involontaire de l'arbre.
 
-Les deux lectures annoncent un cache HTTP de 6 heures et un cache partage de 24 heures (`max_age: 21600`, `shared_max_age: 86400`). Le cache general varie notamment selon `Authorization`, ce qui preserve la separation avec les reponses authentifiees, meme si ces routes sont publiques.
+Les deux lectures annoncent `max_age: 0`, `shared_max_age: 86400` et `public` : aucune fraicheur cote navigateur, 24 heures dans Varnish, purge par `BAN` apres chaque commande du catalogue ([`varnish_cache.md`](../../../../varnish_cache.md)). Le cache general varie notamment selon `Authorization`, ce qui preserve la separation avec les reponses authentifiees, meme si ces routes sont publiques.
 
 ### Parametres de collection
 

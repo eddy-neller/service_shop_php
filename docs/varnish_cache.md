@@ -18,14 +18,18 @@ ni par Kong.
 
 ## En-têtes de cache
 
-Les opérations `GET` publiques de `CategoryResource` et `ProductResource` annoncent :
+Les opérations `GET` publiques de `CategoryResource` et `ProductResource` annoncent (mesuré le
+2026-10-26) :
 
 ```text
-Cache-Control: max-age=21600, s-maxage=86400
+Cache-Control: max-age=0, public, s-maxage=86400
 ```
 
-Soit six heures pour un cache client et vingt-quatre heures pour un cache partagé installé en aval
-du service. Ces en-têtes sont définis par opération dans :
+Soit **aucune fraîcheur côté navigateur**, et vingt-quatre heures pour Varnish, qui lit
+`s-maxage`. C'est la seule façon pour une purge de tenir : Varnish obéit à un `BAN`, un navigateur
+non. Avec une copie navigateur fraîche, une modification du catalogue resterait invisible à ce
+client jusqu'à son expiration, quelle que soit la purge. Ces en-têtes sont définis par opération
+dans :
 
 - `src/Presentation/Catalog/ApiResource/CategoryResource.php` ;
 - `src/Presentation/Catalog/ApiResource/ProductResource.php`.
@@ -41,8 +45,8 @@ catégorie purge le cache partagé avant la réponse HTTP. Le VCL traite les `BA
 méthodes cacheables et n'autorise que le réseau interne Docker.
 
 Les réponses avec `Authorization` ou `Cookie` sont systématiquement transmises à nginx sans être
-stockées. Le cache Varnish ne corrige pas une réponse déjà présente dans le navigateur :
-`max-age=21600` reste le contrat navigateur actuel.
+stockées. Un `BAN` ne corrige pas une réponse déjà gardée par un navigateur : c'est la raison du
+`max-age=0` ci-dessus.
 
 ## Vérification
 

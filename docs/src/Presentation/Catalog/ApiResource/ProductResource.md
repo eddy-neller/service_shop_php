@@ -48,7 +48,7 @@ Les groupes `shop_product:read` servent aux collections et aux items ; `shop_pro
 | `subtitle`, `description`, `updatedAt` | non | oui | details du produit |
 | `category` | oui | oui | resume de categorie ; champ reserve aux administrateurs |
 
-Les deux lectures declarent un cache HTTP de 6 heures et un cache partage de 24 heures (`max_age: 21600`, `shared_max_age: 86400`). Le cache general varie notamment selon `Authorization`, ce qui isole les representations eventuellement influencees par les droits.
+Les deux lectures declarent `max_age: 0`, `shared_max_age: 86400` et `public` : aucune fraicheur cote navigateur, 24 heures dans Varnish, purge par `BAN` apres chaque commande du catalogue ([`varnish_cache.md`](../../../../varnish_cache.md)). Le cache general varie notamment selon `Authorization`, ce qui isole les representations eventuellement influencees par les droits.
 
 ### Parametres de collection
 
