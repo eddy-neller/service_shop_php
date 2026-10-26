@@ -42,4 +42,14 @@ final class CustomerStatusTest extends TestCase
 
         $this->assertTrue($status->isDisabled());
     }
+
+    public function testEqualsReturnsTrueForSameValue(): void
+    {
+        $this->assertTrue(CustomerStatus::active()->equals(CustomerStatus::fromInt(CustomerStatus::ACTIVE)));
+    }
+
+    public function testEqualsReturnsFalseForDifferentValue(): void
+    {
+        $this->assertFalse(CustomerStatus::active()->equals(CustomerStatus::disabled()));
+    }
 }

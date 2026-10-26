@@ -49,4 +49,9 @@ final class CustomerStatus
     {
         return self::DISABLED === $this->value;
     }
+
+    public function equals(self $other): bool
+    {
+        return $this->value === $other->value;
+    }
 }
