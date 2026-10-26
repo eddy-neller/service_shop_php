@@ -616,12 +616,19 @@ find tests -name '*Test.php' | sort | comm -13 /tmp/phpunit_listed.txt -
 # seul tests/Presentation/Api/BaseTest.php (abstraite) doit sortir
 ```
 
-### Les trois garde-fous ne testent aucun comportement
+### Les quatre garde-fous ne testent aucun comportement
 
 `domain.shared`, `appli.shared` et `pres.state.shared` portent `DomainTestCoverageTest`,
 `HandlerConventionTest` et `StateTestCoverageTest` : ils balayent `src/` et cassent le build des
 qu'un `Model`, un Value Object, un State ou un cas d'usage est livre **sans test**, ou qu'un handler
 s'ecarte de la convention de nommage sur laquelle repose le routage Messenger.
+
+`DomainConventionTest` (`domain.shared`) les a rejoints : il verifie la **forme** des classes du
+Domain — VO finaux, immuables, a constructeur prive et `equals()`, agregats sans setter public,
+`updatedAt` par `touch()`, evenements porteurs d'un `eventId`, exceptions dans la hierarchie, horloge
+hors Domain et Application. Son premier run a trouve `CustomerStatus` sans `equals()` et deux
+setters publics, `Customer::setDefaultAddress()` et `CartLine::setQuantity()`, renommes en
+`changeDefaultAddress()` et `changeQuantity()`. Detail : `src/Domain/AGENTS.md`, « Forme garantie ».
 
 Ils ont ete poses au jalon 3, avant l'arrivee de `Customer` et `Ordering`, et leur premier run a
 trouve ce que personne n'avait vu : `Money`, `Slug` et `Uuid` du `SharedKernel` etaient arrives au

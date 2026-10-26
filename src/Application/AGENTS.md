@@ -131,7 +131,8 @@ Calculs de montants/totaux, conversions d'unités monétaires (euros↔cents), a
 
 ## Gestion du temps (ClockInterface)
 
-- Ne jamais faire `new \DateTimeImmutable()` dans Application.
+- Ne jamais faire `new \DateTimeImmutable()` dans Application. Vérifié par
+  `DomainConventionTest::testOnlyInfrastructureReadsTheClock` (suite `domain.shared`).
 - Toujours : injecter `ClockInterface`, utiliser `$this->clock->now()`, passer `$now` au Domain.
 
 ---

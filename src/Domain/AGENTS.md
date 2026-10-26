@@ -180,6 +180,24 @@ livré sans test. Pendant de `HandlerConventionTest` côté Application.
 - Le code Domain pas encore branché peut être listé dans `DomainTestCoverageTest::EXCLUDED`
   (FQCN + commentaire) ; **retirer l'entrée dès qu'il est implémenté**.
 
+### Forme garantie (garde-fou)
+
+Les règles de forme de cette page qui se lisent par réflexion sont **vérifiées** par
+`DomainConventionTest` (suite `domain.shared`), voisin de `DomainTestCoverageTest`. Il casse le build
+dès qu'une classe s'en écarte :
+
+- Value Object : `final`, constructeur `private`, propriétés `private readonly`, `equals(self $other): bool` ;
+- `Model` : `final`, aucun constructeur public, aucun `setXxx()` public, `updatedAt` affecté
+  seulement par `touch()` (et le constructeur) ;
+- Domain Event : `final`, immuable, `DomainEventInterface` + `DomainEventIdentityTrait`, nom en `…Event` ;
+- toute exception de `Exception/` hérite de `SharedKernel\Exception\DomainException` ;
+- ni Domain ni Application ne font `new DateTimeImmutable()` sans date.
+
+Comme son voisin, il n'a **aucune liste d'exclusion**. Ce qui demande un jugement — un concept resté
+en `string`, une décision métier prise dans un handler, un secret dans un événement, une exception
+SPL levée pour une règle métier — relève du skill `ddd-tactique` (`back_php/.claude/skills/`), qui
+liste aussi les cas déjà tranchés.
+
 ### Pattern de test des Entités / Agrégats
 
 Tout `Model` a un test couvrant les comportements publics de l'agrégat, pas ses détails internes :
@@ -278,6 +296,7 @@ adaptés au comportement public :
 - [ ] Toute méthode métier sensible reçoit un `DateTimeImmutable $now`.
 - [ ] `createdAt` immuable, `updatedAt` mis à jour via `$this->touch($now);`.
 - [ ] Aucun `setXxx()` public sur les agrégats.
+- [ ] `domain.shared` vert : `DomainConventionTest` porte les règles de forme de cette checklist.
 - [ ] Domain Events pour les changements importants.
 - [ ] Les tests Domain tournent sans framework.
 - [ ] Tout nouveau `Model`/`ValueObject` a son test au chemin attendu par `DomainTestCoverageTest`.
