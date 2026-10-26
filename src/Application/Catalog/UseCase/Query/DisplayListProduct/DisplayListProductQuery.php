@@ -8,6 +8,14 @@ use App\Application\Shared\CQRS\Query\CacheableQueryInterface;
 
 final readonly class DisplayListProductQuery implements CacheableQueryInterface
 {
+    /**
+     * Champs sur lesquels la liste peut être triée ; les autres sont ignorés.
+     *
+     * `category.title` est accepté mais sans effet : MongoDB ne trie pas sur la catégorie, qui vit
+     * dans une autre collection (`MongoProductRepository::applyOrdering()`).
+     */
+    public const array SORT_FIELDS = ['title', 'category.title', 'price', 'createdAt'];
+
     private const int CACHE_TTL_SECONDS = 3600;
 
     public function __construct(

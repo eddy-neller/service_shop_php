@@ -246,7 +246,7 @@ final readonly class MongoProductRepository implements ProductRepositoryInterfac
     {
         // `category.title` n'est pas triable ici : la categorie vit dans une autre
         // collection et MongoDB ne trie pas sur un document joint sans pipeline. Le champ
-        // reste declare dans SORT_FIELDS pour l'API, il est simplement ignore.
+        // reste declare dans DisplayListProductQuery::SORT_FIELDS pour l'API, il est simplement ignore.
         $allowedFields = [
             'title' => 'title',
             'price' => 'priceAmount',

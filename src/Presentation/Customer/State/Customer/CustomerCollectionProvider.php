@@ -6,7 +6,6 @@ namespace App\Presentation\Customer\State\Customer;
 
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProviderInterface;
-use App\Application\Customer\Port\CustomerRepositoryInterface;
 use App\Application\Customer\UseCase\Query\DisplayListCustomer\DisplayListCustomerQuery;
 use App\Application\Shared\CQRS\Query\QueryBusInterface;
 use App\Presentation\Customer\Presenter\CustomerResourcePresenter;
@@ -34,7 +33,7 @@ final readonly class CustomerCollectionProvider implements ProviderInterface
             page: $this->normalizePaginationParameter($filters['page'] ?? null),
             itemsPerPage: $this->normalizePaginationParameter($filters['itemsPerPage'] ?? null),
             filters: $filters,
-            orderBy: $this->normalizeOrderBy($filters['order'] ?? null, CustomerRepositoryInterface::SORT_FIELDS),
+            orderBy: $this->normalizeOrderBy($filters['order'] ?? null, DisplayListCustomerQuery::SORT_FIELDS),
         );
 
         $output = $this->queryBus->dispatch($query);

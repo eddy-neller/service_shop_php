@@ -8,6 +8,9 @@ use App\Application\Shared\CQRS\Query\CacheableQueryInterface;
 
 final readonly class DisplayListCategoryQuery implements CacheableQueryInterface
 {
+    /** Champs sur lesquels la liste peut être triée ; les autres sont ignorés. */
+    public const array SORT_FIELDS = ['title', 'level', 'nbProduct', 'createdAt'];
+
     private const int CACHE_TTL_SECONDS = 3600;
 
     public function __construct(

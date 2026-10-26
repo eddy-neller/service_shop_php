@@ -61,7 +61,7 @@ Le provider lit les filtres bruts dans `$context['filters']`, normalise `page`, 
 | `page`, `itemsPerPage` | pagination client |
 | `order[title]`, `order[category.title]`, `order[price]`, `order[createdAt]` | tri `asc` ou `desc` |
 
-Seuls ces quatre champs sont acceptes pour le tri (`ProductRepositoryInterface::SORT_FIELDS`) ; une cle ou direction invalide est ignoree. Sans ordre valide, le contrat de ressource declare `createdAt DESC`. Le provider renseigne `_total_items` et `_total_pages` dans la requete afin que la pagination API Platform produise ses en-tetes.
+Seuls ces quatre champs sont acceptes pour le tri (`DisplayListProductQuery::SORT_FIELDS`) ; une cle ou direction invalide est ignoree. Sans ordre valide, le contrat de ressource declare `createdAt DESC`. Le provider renseigne `_total_items` et `_total_pages` dans la requete afin que la pagination API Platform produise ses en-tetes.
 
 Il n'y a volontairement ni `#[ApiFilter]` ni `stateOptions` : ces mecanismes etaient relies a l'ancienne integration Doctrine ORM et ne pilotent pas les providers manuels. Les parametres OpenAPI sont donc declares directement sur l'operation de collection.
 
@@ -88,6 +88,6 @@ Le `DELETE` ne lit ni ne deserialize de ressource (`read: false`, `output: false
 ## Points de vigilance lors d'une modification
 
 - Toute nouvelle route doit choisir explicitement un provider ou processor et son autorisation ; ne pas reactiver le CRUD automatique d'API Platform.
-- Faire evoluer ensemble les filtres declares dans OpenAPI, le provider, `ProductRepositoryInterface::SORT_FIELDS` et les tests fonctionnels.
+- Faire evoluer ensemble les filtres declares dans OpenAPI, le provider, `DisplayListProductQuery::SORT_FIELDS` et les tests fonctionnels.
 - Ne pas exposer les documents ODM ou les agregats : le presenter maintient la frontiere entre Presentation et Application.
 - Ne pas effectuer de `flush()` dans cette ressource ou ses states. Le flush unique de `MongoTransactional` preserve l'atomicite entre le produit et le compteur de sa categorie.

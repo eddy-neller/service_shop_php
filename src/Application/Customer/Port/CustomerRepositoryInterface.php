@@ -20,20 +20,6 @@ use App\Domain\Customer\ValueObject\UserAccountId;
  */
 interface CustomerRepositoryInterface
 {
-    /**
-     * `username` ne fait pas partie des criteres : ce tri s'appuyait sur une jointure DQL
-     * vers la table des comptes utilisateurs, qui vit desormais dans un autre service et une
-     * autre base. Le read model n'expose de toute facon pas ce champ — seul le tri est perdu.
-     */
-    public const array SORT_FIELDS = ['status', 'createdAt'];
-
-    /**
-     * Champs de tri des adresses. Elles n'ont plus de depot, mais la liste blanche reste
-     * exposee ici : c'est `Presentation` qui la consomme pour valider le parametre `order`,
-     * et le tri lui-meme est applique par `DisplayListAddressQueryHandler`.
-     */
-    public const array ADDRESS_SORT_FIELDS = ['name', 'city', 'country', 'createdAt'];
-
     public function nextIdentity(): CustomerId;
 
     /**

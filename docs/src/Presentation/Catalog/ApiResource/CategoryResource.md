@@ -61,7 +61,7 @@ Le provider recupere les filtres bruts dans `$context['filters']`, normalise les
 | `page`, `itemsPerPage` | pagination client |
 | `order[title]`, `order[level]`, `order[nbProduct]`, `order[createdAt]` | tri `asc` ou `desc` |
 
-Seuls ces quatre champs de tri sont conserves par le normaliseur (`CategoryRepositoryInterface::SORT_FIELDS`) ; une cle ou direction invalide est ignoree. En l'absence de tri valide, le use case applique `createdAt DESC`. Le provider renseigne `_total_items` et `_total_pages` dans la requete pour que la pagination API Platform puisse construire sa reponse.
+Seuls ces quatre champs de tri sont conserves par le normaliseur (`DisplayListCategoryQuery::SORT_FIELDS`) ; une cle ou direction invalide est ignoree. En l'absence de tri valide, le use case applique `createdAt DESC`. Le provider renseigne `_total_items` et `_total_pages` dans la requete pour que la pagination API Platform puisse construire sa reponse.
 
 Il n'y a volontairement ni `#[ApiFilter]` ni `stateOptions` : ces attributs etaient lies a l'ancienne integration Doctrine ORM et ne piloteraient pas les providers manuels.
 

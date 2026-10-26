@@ -6,7 +6,6 @@ namespace App\Presentation\Customer\State\Address;
 
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProviderInterface;
-use App\Application\Customer\Port\CustomerRepositoryInterface;
 use App\Application\Customer\UseCase\Query\DisplayListAddress\DisplayListAddressQuery;
 use App\Application\Shared\CQRS\Query\QueryBusInterface;
 use App\Presentation\Customer\Presenter\AddressResourcePresenter;
@@ -32,7 +31,7 @@ final readonly class AddressCollectionProvider implements ProviderInterface
             $filters = [];
         }
 
-        $orderBy = $this->normalizeOrderBy($filters['order'] ?? null, CustomerRepositoryInterface::ADDRESS_SORT_FIELDS);
+        $orderBy = $this->normalizeOrderBy($filters['order'] ?? null, DisplayListAddressQuery::SORT_FIELDS);
 
         $output = $this->queryBus->dispatch(new DisplayListAddressQuery(
             ownerId: $this->customerResolver->resolve(),

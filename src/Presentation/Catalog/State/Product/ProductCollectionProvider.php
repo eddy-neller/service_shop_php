@@ -6,7 +6,6 @@ namespace App\Presentation\Catalog\State\Product;
 
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProviderInterface;
-use App\Application\Catalog\Port\ProductRepositoryInterface;
 use App\Application\Catalog\UseCase\Query\DisplayListProduct\DisplayListProductQuery;
 use App\Application\Shared\CQRS\Query\QueryBusInterface;
 use App\Presentation\Catalog\Presenter\ProductResourcePresenter;
@@ -30,7 +29,7 @@ final readonly class ProductCollectionProvider implements ProviderInterface
             $filters = [];
         }
 
-        $orderBy = $this->normalizeOrderBy($filters['order'] ?? null, ProductRepositoryInterface::SORT_FIELDS);
+        $orderBy = $this->normalizeOrderBy($filters['order'] ?? null, DisplayListProductQuery::SORT_FIELDS);
 
         $output = $this->queryBus->dispatch(new DisplayListProductQuery(
             page: $this->normalizePaginationParameter($filters['page'] ?? null),

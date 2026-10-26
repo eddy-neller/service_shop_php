@@ -10,8 +10,6 @@ use App\Domain\Catalog\ValueObject\ProductTitle;
 
 interface ProductRepositoryInterface
 {
-    public const array SORT_FIELDS = ['title', 'category.title', 'price', 'createdAt'];
-
     public function nextIdentity(): ProductId;
 
     public function list(array $filters, array $orderBy, int $page, int $itemsPerPage): array;

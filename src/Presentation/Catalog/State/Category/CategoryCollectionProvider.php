@@ -6,7 +6,6 @@ namespace App\Presentation\Catalog\State\Category;
 
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProviderInterface;
-use App\Application\Catalog\Port\CategoryRepositoryInterface;
 use App\Application\Catalog\UseCase\Query\DisplayListCategory\DisplayListCategoryQuery;
 use App\Application\Shared\CQRS\Query\QueryBusInterface;
 use App\Presentation\Catalog\Presenter\CategoryResourcePresenter;
@@ -30,7 +29,7 @@ final readonly class CategoryCollectionProvider implements ProviderInterface
             $filters = [];
         }
 
-        $orderBy = $this->normalizeOrderBy($filters['order'] ?? null, CategoryRepositoryInterface::SORT_FIELDS);
+        $orderBy = $this->normalizeOrderBy($filters['order'] ?? null, DisplayListCategoryQuery::SORT_FIELDS);
 
         $output = $this->queryBus->dispatch(new DisplayListCategoryQuery(
             page: $this->normalizePaginationParameter($filters['page'] ?? null),
