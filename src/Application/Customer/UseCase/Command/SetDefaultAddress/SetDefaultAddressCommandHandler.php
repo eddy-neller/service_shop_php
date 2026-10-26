@@ -47,7 +47,7 @@ final readonly class SetDefaultAddressCommandHandler implements CommandHandlerIn
                 throw new AddressNotFoundException();
             }
 
-            $customer->setDefaultAddress($addressId, $this->clock->now());
+            $customer->changeDefaultAddress($addressId, $this->clock->now());
 
             $this->repository->save($customer);
             $this->eventBus->publishAll($customer->releaseEvents());

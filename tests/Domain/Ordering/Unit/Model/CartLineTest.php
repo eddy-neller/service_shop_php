@@ -17,7 +17,7 @@ final class CartLineTest extends TestCase
     public function testQuantityCanBeChangedWithinBounds(): void
     {
         $line = $this->createLine(1);
-        $line->setQuantity(CartLineQuantity::fromInt(99));
+        $line->changeQuantity(CartLineQuantity::fromInt(99));
 
         self::assertSame(99, $line->getQuantity()->toInt());
     }

@@ -240,7 +240,7 @@ final class Customer
         ));
     }
 
-    public function setDefaultAddress(AddressId $addressId, DateTimeImmutable $now): void
+    public function changeDefaultAddress(AddressId $addressId, DateTimeImmutable $now): void
     {
         $target = $this->getAddress($addressId);
 

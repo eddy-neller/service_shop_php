@@ -100,7 +100,7 @@ final class Cart
 
     public function updateLine(ProductId $productId, CartLineQuantity $quantity, DateTimeImmutable $now): void
     {
-        $this->getLineByProduct($productId)->setQuantity($quantity);
+        $this->getLineByProduct($productId)->changeQuantity($quantity);
         $this->touch($now);
 
         $this->recordEvent(new CartLineQuantityChangedEvent($this->id, $this->ownerId, $productId, $now));

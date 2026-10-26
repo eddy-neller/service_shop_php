@@ -358,7 +358,7 @@ final class CustomerTest extends TestCase
         $customer->clearDomainEvents();
 
         $changedAt = new DateTimeImmutable('2025-01-02 10:00:00');
-        $customer->setDefaultAddress(AddressId::fromString(self::ADDRESS_B), $changedAt);
+        $customer->changeDefaultAddress(AddressId::fromString(self::ADDRESS_B), $changedAt);
 
         self::assertFalse($customer->findAddress(AddressId::fromString(self::ADDRESS_A))?->isDefault());
         self::assertTrue($customer->findAddress(AddressId::fromString(self::ADDRESS_B))?->isDefault());
@@ -379,7 +379,7 @@ final class CustomerTest extends TestCase
         $customer->clearDomainEvents();
 
         $untouched = $customer->getUpdatedAt();
-        $customer->setDefaultAddress(AddressId::fromString(self::ADDRESS_A), new DateTimeImmutable('2025-02-01 10:00:00'));
+        $customer->changeDefaultAddress(AddressId::fromString(self::ADDRESS_A), new DateTimeImmutable('2025-02-01 10:00:00'));
 
         self::assertSame([], $customer->releaseEvents());
         self::assertSame($untouched, $customer->getUpdatedAt());
@@ -391,7 +391,7 @@ final class CustomerTest extends TestCase
 
         $this->expectException(AddressNotFoundException::class);
 
-        $customer->setDefaultAddress(
+        $customer->changeDefaultAddress(
             AddressId::fromString(self::ADDRESS_A),
             new DateTimeImmutable('2025-01-02 10:00:00'),
         );

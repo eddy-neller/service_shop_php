@@ -27,7 +27,7 @@ final class CartLine
         $this->quantity = $this->quantity->add($quantity);
     }
 
-    public function setQuantity(CartLineQuantity $quantity): void
+    public function changeQuantity(CartLineQuantity $quantity): void
     {
         $this->quantity = $quantity;
     }
