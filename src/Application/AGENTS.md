@@ -10,6 +10,9 @@
 - Contient : Commands / Queries, Handlers, Ports (interfaces), services applicatifs partagés (Clock, Transaction, …).
 - Peut dépendre de : **Domain** + **Ports** (`src/Application/.../Port`).
 - Ne doit **pas** dépendre de : Presentation, Infrastructure, Symfony / Doctrine / API Platform.
+- Vérifié par `DependencyRule::testApplicationDependsOnlyOnDomainAndItself` (`make stan`) : liste blanche
+  `App\Application` + `App\Domain` + PHP natif. Attributs et docblocks compris — un `#[AsMessageHandler]`
+  ou un `@param LoggerInterface` est refusé comme un `use`.
 
 ---
 

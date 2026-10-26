@@ -9,3 +9,14 @@ parameters:
     treatPhpDocTypesAsCertain: false
     excludePaths:
         - tests/bootstrap.php
+    # Regle de dependance (PHPat) : les classes natives de PHP sont permises dans toutes les couches.
+    phpat:
+        ignore_built_in_classes: true
+        show_rule_names: true
+
+services:
+    # Regle de dependance de la Clean Architecture — voir tests/Architecture/DependencyRule.php.
+    -
+        class: App\Tests\Architecture\DependencyRule
+        tags:
+            - phpat.test

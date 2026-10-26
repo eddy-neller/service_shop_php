@@ -34,6 +34,9 @@ src/Domain/
 - Domain **ne dépend jamais** de :
   - `App\Application\*`, `App\Infrastructure\*`, `App\Presentation\*`,
   - Symfony, Doctrine, API Platform, Ramsey, HTTP.
+- Vérifié par `DependencyRule::testDomainDependsOnNothingButItself` (`make stan`) : liste blanche, toute
+  classe hors `App\Domain` et hors PHP natif est refusée. Les classes d'extensions (`MongoDB\BSON\…`)
+  passent pour natives et échappent à PHPat : le skill `regle-dependance` les cherche à part.
 - Le Domain est l'**unique source de vérité pour la génération d'ID** (factory methods + VOs) ; l'Application ne fait que fournir les UUID via les Ports.
 
 ---

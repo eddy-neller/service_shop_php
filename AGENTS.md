@@ -630,6 +630,21 @@ jalon 2 **sans leurs tests**. C'est exactement ce qu'ils servent a empecher.
 Ils n'ont **aucune liste d'exclusion**. Une trappe pre-percee finit toujours par servir ; en
 rajouter une doit rester un geste visible en diff, pas remplir un trou deja pret.
 
+### La regle de dependance est verifiee, pas seulement ecrite
+
+`tests/Architecture/DependencyRule.php` (PHPat, extension de PHPStan) traduit les regles de
+dependance des quatre `AGENTS.md` de couche : `make stan` les applique, donc GrumPHP a chaque commit
+et la CI. Une violation sort comme une erreur PHPStan `phpat.<regle>`. Changer une regle, c'est
+changer **les deux** : le `AGENTS.md` de la couche et la methode correspondante. Ne jamais faire
+taire une violation par un `ignoreErrors` sans l'ecrire comme ecart connu dans le `AGENTS.md` de la
+couche. Les regles vivent dans `phpstan.dist.neon` : un `phpstan.neon` local doit l'inclure
+(`includes: [phpstan.dist.neon]`), sans quoi `make stan` et GrumPHP ne les verraient pas.
+Diagnostic, angles morts (classes `MongoDB\…` comprises) et remedes : skill `regle-dependance`
+(`back_php/.claude/skills/`).
+
+Premier passage : quatre `SORT_FIELDS` lus par la Presentation sur des Ports de repository, remontes
+sur leurs Queries (`DisplayListProductQuery::SORT_FIELDS`…).
+
 Attention : **la tache `phpstan` de grumphp n'analyse que les fichiers suivis par git.** Un fichier
 neuf non encore `git add` passe au vert sans avoir ete regarde. Lancer
 `vendor/bin/phpstan analyse -c phpstan.dist.neon` a la main avant de conclure.
@@ -713,6 +728,7 @@ C=$(reads); echo "miss=$((B-A)) hit=$((C-B))"   # miss > 0, hit = 0
       reste interne a ce service et Redis dedie au cache applicatif partage entre ses replicas.
 - [ ] `GET /health` repond sans que la stack de `service_identity` tourne.
 - [ ] `make unit` vert, sans test *risky*.
+- [ ] `make stan` vert : il porte la regle de dependance (`tests/Architecture/DependencyRule.php`).
 - [ ] Aucun import Doctrine hors `src/Infrastructure/Persistence/`, hors les **deux exceptions
       assumees** — les fixtures et `NbProductCommand`, outil de reparation ponctuel. Critere et
       justification dans `src/Infrastructure/AGENTS.md`, « Ou vit l'acces Mongo ». Verifier avec

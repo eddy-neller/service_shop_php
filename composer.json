@@ -47,6 +47,7 @@
         "doctrine/data-fixtures": "^2.1",
         "fakerphp/faker": "^1.24",
         "friendsofphp/php-cs-fixer": "^3.95.18",
+        "phpat/phpat": "^0.12.5",
         "phpmd/phpmd": "^2.15",
         "phpro/grumphp": "^2.23",
         "phpstan/extension-installer": "^1.4.3",

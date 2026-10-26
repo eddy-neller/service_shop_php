@@ -13,7 +13,21 @@
   - Domain uniquement pour les **constantes publiques** de Value Objects,
   - Symfony (validation, sécurité, sérialisation), API Platform.
 - Ne doit **pas** dépendre de : repositories Doctrine, services `src/Infrastructure/*` (hashers, FS, …), implémentations concrètes des Ports.
-  - **Exception** : `stateOptions: new Options(entityClass: ...)` dans `#[ApiResource]` peut référencer une entité Doctrine — couplage imposé par l'ORM bridge d'API Platform, acceptable **uniquement** pour ce paramètre `entityClass`.
+  - **Exception** : `stateOptions: new Options(entityClass: ...)` dans `#[ApiResource]` peut référencer une entité Doctrine — couplage imposé par l'ORM bridge d'API Platform, acceptable **uniquement** pour ce paramètre `entityClass`. Aucune ressource de ce service ne s'en sert
+    aujourd'hui (pas d'ORM) : la règle PHPat ne l'exclut donc pas, il faudrait l'y ajouter le jour venu.
+  - **Exception** : les constantes de `App\Infrastructure\Symfony\Security\RoleSet`, vocabulaire du claim
+    `roles` du JWT, dans les expressions `security` des `#[ApiResource]`. Ce service ne possède pas de
+    rôles métier (pas de VO dans le Domain), et `AdminGroup` (Infrastructure) lit les mêmes constantes :
+    `RoleSet` ne peut donc vivre ni en Presentation, ni dans le Domain.
+- Vérifié par `DependencyRule` (`make stan`), trois règles :
+  - `testPresentationTalksToApplicationThroughBuses` — d'Application, seuls `Shared\CQRS`, les Commands/Queries
+    (pas leurs handlers), les read models et deux Ports : `FileInterface`, `ProductImageUrlResolverInterface`
+    (les presenters construisent l'URL publique d'une image). Une constante dont la Presentation a besoin
+    vit sur la Query, pas sur un Port (`DisplayListProductQuery::SORT_FIELDS` et ses trois sœurs).
+  - `testPresentationIgnoresInfrastructure` — exclut la seule classe `RoleSet`.
+  - `testPresentationNeverBuildsDomainObjects` — du Domain, seuls les `ValueObject` sont visibles. PHPat ne
+    distingue pas `CustomerStatus::ACTIVE` de `CustomerStatus::fromInt()` : l'appel de factory reste à chercher
+    à part (skill `regle-dependance`).
 
 ---
 
