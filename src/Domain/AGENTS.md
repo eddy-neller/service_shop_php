@@ -87,7 +87,7 @@ src/Domain/
   réaction en a réellement besoin**, à condition qu'elle ne ressorte pas dans les logs. Critère : « quel
   consommateur la lit ? » — sans consommateur, la retirer de l'événement.
 
-> Cycle de vie complet (publication transactionnelle, worker, idempotence) : [`docs/domain_events.md`](../docs/domain_events.md).
+> Cycle de vie complet (publication transactionnelle, worker, idempotence) : [`docs/domain_events.md`](../../docs/domain_events.md).
 
 ---
 
@@ -116,7 +116,7 @@ Règles :
 - Le Domain **ignore HTTP** : les interfaces portent une sémantique métier (« argument invalide »,
   « introuvable », « conflit »), jamais un code. Le lien code↔catégorie vit dans `exception_to_status`.
 - Fonctionnement détaillé (ordre de résolution, `is_a()`, décision d'ajout) :
-  [`docs/exception_handling.md`](../docs/exception_handling.md).
+  [`docs/exception_handling.md`](../../docs/exception_handling.md).
 
 ### `Exception` métier vs `Error` technique
 

@@ -101,7 +101,7 @@ alors que ses réactions sont définitivement perdues.
 Corollaire : la publication ne doit **jamais** déclencher d'I/O externe (HTTP, e-mail, cache distant) — le
 bus se contente d'une écriture locale, les réactions sont exécutées plus tard par le worker `domain_events`.
 
-> Cycle de vie complet des événements (outbox, worker, idempotence) : [`docs/domain_events.md`](../docs/domain_events.md).
+> Cycle de vie complet des événements (outbox, worker, idempotence) : [`docs/domain_events.md`](../../docs/domain_events.md).
 
 Les tests de commande reflètent ce découpage : une erreur de validation pure attend que `transactional()` ne soit pas appelé ; un échec issu d'une lecture DB décisionnelle attend l'exécution du callback transactionnel.
 
