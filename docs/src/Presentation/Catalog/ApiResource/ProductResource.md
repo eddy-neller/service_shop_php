@@ -1,6 +1,6 @@
 # `ProductResource`
 
-Source : [`src/Presentation/Shop/ApiResource/Catalog/ProductResource.php`](../../../../../../src/Presentation/Shop/ApiResource/Catalog/ProductResource.php).
+Source : [`src/Presentation/Catalog/ApiResource/ProductResource.php`](../../../../../src/Presentation/Catalog/ApiResource/ProductResource.php).
 
 `ProductResource` est le contrat HTTP des produits du catalogue. Ce n'est ni un document MongoDB ni un agregat de domaine : il decrit les routes API Platform, les representations JSON et les DTO d'entree, puis delegue chaque operation a un provider ou un processor. Les lectures sont publiques ; les ecritures necessitent un JWT valide avec `ROLE_ADMIN`.
 

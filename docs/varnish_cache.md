@@ -27,8 +27,8 @@ Cache-Control: max-age=21600, s-maxage=86400
 Soit six heures pour un cache client et vingt-quatre heures pour un cache partagé installé en aval
 du service. Ces en-têtes sont définis par opération dans :
 
-- `src/Presentation/Shop/ApiResource/Catalog/CategoryResource.php` ;
-- `src/Presentation/Shop/ApiResource/Catalog/ProductResource.php`.
+- `src/Presentation/Catalog/ApiResource/CategoryResource.php` ;
+- `src/Presentation/Catalog/ApiResource/ProductResource.php`.
 
 API Platform active également les ETags dans ses en-têtes par défaut
 (`config/packages/api_platform.yaml`). Aucun listener `Last-Modified` n'est installé dans ce

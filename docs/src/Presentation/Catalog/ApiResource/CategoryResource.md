@@ -1,6 +1,6 @@
 # `CategoryResource`
 
-Source : [`src/Presentation/Shop/ApiResource/Catalog/CategoryResource.php`](../../../../../../src/Presentation/Shop/ApiResource/Catalog/CategoryResource.php).
+Source : [`src/Presentation/Catalog/ApiResource/CategoryResource.php`](../../../../../src/Presentation/Catalog/ApiResource/CategoryResource.php).
 
 `CategoryResource` est l'adaptateur HTTP du catalogue de categories. Ce n'est ni un document MongoDB ni un modele de domaine : il declare le contrat public d'API Platform, selectionne les DTO d'entree et relie chaque operation a un provider ou un processor. Les lectures sont publiques ; toute ecriture requiert `ROLE_ADMIN` et un JWT valide.
 
