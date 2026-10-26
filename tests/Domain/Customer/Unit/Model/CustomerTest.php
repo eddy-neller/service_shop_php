@@ -14,6 +14,7 @@ use App\Domain\Customer\Event\Customer\CustomerDisabledEvent;
 use App\Domain\Customer\Exception\AddressLimitReachedException;
 use App\Domain\Customer\Exception\AddressNotFoundException;
 use App\Domain\Customer\Exception\CustomerDisabledException;
+use App\Domain\Customer\Exception\CustomerWithoutAccountException;
 use App\Domain\Customer\Model\Address;
 use App\Domain\Customer\Model\Customer;
 use App\Domain\Customer\ValueObject\AddressId;
@@ -104,6 +105,25 @@ final class CustomerTest extends TestCase
 
         self::assertSame([], $customer->releaseEvents());
         self::assertSame($untouched, $customer->getUpdatedAt());
+    }
+
+    public function testDisableRefusesACustomerWithoutAccount(): void
+    {
+        $customer = Customer::create(
+            id: CustomerId::fromString(self::CUSTOMER_ID),
+            now: new DateTimeImmutable('2025-01-01 10:00:00'),
+        );
+        $customer->clearDomainEvents();
+
+        try {
+            $customer->disable(new DateTimeImmutable('2025-01-02 10:00:00'));
+            self::fail('A customer without account must not be disabled.');
+        } catch (CustomerWithoutAccountException $exception) {
+            self::assertSame('Customer has no user account linked.', $exception->getMessage());
+        }
+
+        self::assertTrue($customer->getStatus()->isActive());
+        self::assertSame([], $customer->releaseEvents());
     }
 
     public function testAnActiveCustomerPassesTheActivityGuard(): void

@@ -14,6 +14,7 @@ use App\Domain\Customer\Event\Customer\CustomerDisabledEvent;
 use App\Domain\Customer\Exception\AddressLimitReachedException;
 use App\Domain\Customer\Exception\AddressNotFoundException;
 use App\Domain\Customer\Exception\CustomerDisabledException;
+use App\Domain\Customer\Exception\CustomerWithoutAccountException;
 use App\Domain\Customer\ValueObject\AddressId;
 use App\Domain\Customer\ValueObject\CustomerId;
 use App\Domain\Customer\ValueObject\CustomerStatus;
@@ -103,8 +104,17 @@ final class Customer
         $this->recordEvent(new CustomerActivatedEvent($this->id, $this->userAccountId, $now));
     }
 
+    /**
+     * Regle reprise du monolithe, sans raison ecrite a l'epoque : un client sans compte ne se
+     * desactive pas. Elle passe avant le court-circuit d'idempotence, comme quand elle vivait dans
+     * le handler.
+     */
     public function disable(DateTimeImmutable $now): void
     {
+        if (null === $this->userAccountId) {
+            throw new CustomerWithoutAccountException();
+        }
+
         if ($this->status->isDisabled()) {
             return;
         }

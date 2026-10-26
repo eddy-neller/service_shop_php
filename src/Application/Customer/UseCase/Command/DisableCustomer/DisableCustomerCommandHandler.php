@@ -10,7 +10,6 @@ use App\Application\Shared\CQRS\Command\CommandHandlerInterface;
 use App\Application\Shared\Port\ClockInterface;
 use App\Application\Shared\Port\DomainEventBusInterface;
 use App\Application\Shared\Port\TransactionalInterface;
-use App\Domain\Customer\Exception\CustomerDomainException;
 use App\Domain\Customer\Exception\CustomerNotFoundException;
 use App\Domain\Customer\Model\Customer;
 use App\Domain\Customer\ValueObject\CustomerId;
@@ -33,10 +32,6 @@ final readonly class DisableCustomerCommandHandler implements CommandHandlerInte
             $customer = $this->repository->findById($customerId);
             if (null === $customer) {
                 throw new CustomerNotFoundException();
-            }
-
-            if (null === $customer->getUserAccountId()) {
-                throw new CustomerDomainException('Customer has no user account linked.');
             }
 
             $customer->disable($this->clock->now());

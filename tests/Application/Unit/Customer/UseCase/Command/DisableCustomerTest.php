@@ -11,8 +11,8 @@ use App\Application\Shared\Port\ClockInterface;
 use App\Application\Shared\Port\DomainEventBusInterface;
 use App\Application\Shared\Port\TransactionalInterface;
 use App\Domain\Customer\Event\Customer\CustomerDisabledEvent;
-use App\Domain\Customer\Exception\CustomerDomainException;
 use App\Domain\Customer\Exception\CustomerNotFoundException;
+use App\Domain\Customer\Exception\CustomerWithoutAccountException;
 use App\Domain\Customer\Model\Customer;
 use App\Domain\Customer\ValueObject\CustomerId;
 use App\Domain\Customer\ValueObject\UserAccountId;
@@ -129,10 +129,10 @@ final class DisableCustomerTest extends TestCase
             ->willReturnCallback(static fn (callable $callback) => $callback());
         $this->repository->expects($this->once())->method('findById')->willReturn($orphan);
         $this->repository->expects($this->never())->method('save');
-        $this->clock->expects($this->never())->method('now');
+        $this->clock->expects($this->once())->method('now')
+            ->willReturn(new DateTimeImmutable('2025-01-15 10:00:00'));
 
-        $this->expectException(CustomerDomainException::class);
-        $this->expectExceptionMessage('Customer has no user account linked.');
+        $this->expectException(CustomerWithoutAccountException::class);
 
         $this->handler->handle(new DisableCustomerCommand(self::CUSTOMER_ID));
     }
