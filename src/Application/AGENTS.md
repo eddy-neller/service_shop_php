@@ -23,7 +23,7 @@ Un service applicatif interne, pur et sans dépendance technique (par exemple `A
 Un Port représente une dépendance externe ou technique que l'Application doit abstraire : repository, horloge, configuration, chiffrement, fournisseur de token, etc.
 
 **Shared Ports** (`Application/Shared/Port/`) :
-- `ClockInterface` (temps `now()`), `ConfigInterface` (config), `TransactionalInterface` (exécution atomique),
+- `ClockInterface` (temps `now()`), `TransactionalInterface` (exécution atomique),
 - `FileInterface` (fichier — pas d'`UploadedFile` Symfony), `DomainEventBusInterface` (publication des Domain Events).
 
 **Ports du catalogue** (`Application/Catalog/Port/`) : `CategoryRepositoryInterface`,
