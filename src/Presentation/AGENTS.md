@@ -79,7 +79,7 @@ src/Presentation/
 - Les Value Objects Domain ne sont autorisés dans Presentation **que pour leurs constantes publiques** : rôles dans les expressions de sécurité, choix Symfony (`Assert\Choice`) ou valeurs par défaut API. Presentation ne construit, ne type ni ne transporte jamais une instance de VO Domain (`new`, `from*()`, propriété/paramètre/retour typé VO).
 - Les Inputs et les `Command`/`Query` restent scalaires (sauf exceptions transverses explicitement admises, comme `Pagination` et `FileInterface`) ; la conversion scalaire → VO et la validation des invariants métier se font dans le handler Application.
 - Sécurité : `security` / `security_post_denormalize` sur les opérations API Platform ; `Security` Symfony dans les Processors/Providers si besoin.
-- Endpoints `/me` : utiliser `UserMeSecurityTrait` (garantit 401/403 correct, entry point JWT) — ne pas lever d'exception HTTP directe.
+- Endpoints `/me` : utiliser `CustomerMeSecurityTrait` (garantit 401/403 correct, entry point JWT) — ne pas lever d'exception HTTP directe.
 - Rôles centralisés via `RoleSet` (ex. `RoleSet::ROLE_ADMIN`) dans les expressions `security`.
 
 ---
