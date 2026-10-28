@@ -200,6 +200,8 @@ ODM `ReferenceOne` stockee comme identifiant ; il n'existe pas de second champ `
 > Chaque option de `config/packages/messenger.yaml`, option par option :
 > [`docs/config/packages/messenger.md`](docs/config/packages/messenger.md) — `docs/config/` et
 > `docs/src/` reflettent l'arborescence du code.
+> Audits d'architecture dates, non normatifs et jamais reecrits : `docs/audits/AAAA-MM-JJ-architecture.md`,
+> produits par le skill `audit-archi`.
 
 Les douze evenements du catalogue sont enregistres par les agregats, publies par les command
 handlers **dans** le callback transactionnel, et consommes par un worker Messenger.
